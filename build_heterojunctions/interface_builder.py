@@ -14,18 +14,43 @@ Author: Xuan-Yan (worked example tuned for MAPbI3 / TiO2 workflows)
 Requirements: pymatgen, numpy
 """
 
+from __future__ import annotations
+
 import argparse
 import math
 from pathlib import Path
+import shutil
 from typing import Dict, Iterable, List, Set, Tuple
 
-import numpy as np
-from pymatgen.core import Lattice, Structure
-from pymatgen.core.surface import SlabGenerator
-from pymatgen.transformations.standard_transformations import SupercellTransformation
-# from pymatgen.analysis.interfaces import InterfaceMatcher
-from pymatgen.analysis.interfaces.coherent_interfaces import CoherentInterfaceBuilder, Interface
-from pymatgen.io.vasp import Poscar
+# Optional heavy dependencies (needed for build workflow).
+# Split-layer workflow can run without them for CIF inputs.
+try:
+    import numpy as np  # type: ignore
+    from pymatgen.core import Lattice, Structure  # type: ignore
+    from pymatgen.core.surface import SlabGenerator  # type: ignore
+    from pymatgen.transformations.standard_transformations import SupercellTransformation  # type: ignore
+    # from pymatgen.analysis.interfaces import InterfaceMatcher
+    from pymatgen.analysis.interfaces.coherent_interfaces import CoherentInterfaceBuilder, Interface  # type: ignore
+    from pymatgen.io.vasp import Poscar  # type: ignore
+    _HAS_DEPS = True
+except ModuleNotFoundError:
+    np = None  # type: ignore
+    Lattice = None  # type: ignore
+    Structure = None  # type: ignore
+    SlabGenerator = None  # type: ignore
+    SupercellTransformation = None  # type: ignore
+    CoherentInterfaceBuilder = None  # type: ignore
+    Interface = None  # type: ignore
+    Poscar = None  # type: ignore
+    _HAS_DEPS = False
+
+
+def _require_build_deps() -> None:
+    if not _HAS_DEPS:
+        raise RuntimeError(
+            "This workflow requires numpy + pymatgen, but they are not available in the current Python environment. "
+            "Install them (e.g. `pip install numpy pymatgen`) or run this script inside your conda environment."
+        )
 
 
 def _extend_matrix_2d_to_3d(mat_2d: np.ndarray) -> np.ndarray:
@@ -159,8 +184,481 @@ def _reorder_structure_for_poscar(struct: Structure) -> Structure:
     return struct_copy
 
 def load_structure(path):
+    _require_build_deps()
     s = Structure.from_file(path)
     return s
+
+
+def _read_cif_preserve_frac(path: Path) -> Structure:
+    """
+    Read a (simple) CIF and preserve *raw* fractional coordinates as written.
+
+    Motivation
+    ----------
+    For differential charge workflows, we sometimes need to split a heterojunction
+    into independent layers while keeping their relative positions inside the cell
+    unchanged. Many structure readers wrap fractional coords into [0,1), which can
+    change how the split layers appear when viewed inside the unit cell. This
+    reader keeps the original values (including negatives / >1).
+
+    Notes
+    -----
+    This is intentionally lightweight: it supports CIFs that provide
+    _cell_length_{a,b,c}, _cell_angle_{alpha,beta,gamma}, and an atom loop that
+    includes _atom_site_label and _atom_site_fract_{x,y,z}. If parsing fails, the
+    caller should fall back to pymatgen's Structure.from_file.
+    """
+    _require_build_deps()
+    text = path.read_text(errors="ignore").splitlines()
+
+    def _get_float(key: str) -> float:
+        for line in text:
+            if line.strip().startswith(key):
+                parts = line.split()
+                if len(parts) >= 2:
+                    return float(parts[1])
+        raise ValueError(f"Missing CIF key: {key}")
+
+    a = _get_float("_cell_length_a")
+    b = _get_float("_cell_length_b")
+    c = _get_float("_cell_length_c")
+    alpha = _get_float("_cell_angle_alpha")
+    beta = _get_float("_cell_angle_beta")
+    gamma = _get_float("_cell_angle_gamma")
+
+    # Find atom loop headers
+    header_start = None
+    for i, line in enumerate(text):
+        if line.strip() == "loop_":
+            # Check whether subsequent lines include the headers we need
+            headers: List[str] = []
+            j = i + 1
+            while j < len(text) and text[j].strip().startswith("_"):
+                headers.append(text[j].strip())
+                j += 1
+            need = {
+                "_atom_site_label",
+                "_atom_site_fract_x",
+                "_atom_site_fract_y",
+                "_atom_site_fract_z",
+            }
+            if need.issubset(set(headers)):
+                header_start = i
+                header_lines = headers
+                data_start = j
+                break
+
+    if header_start is None:
+        raise ValueError("Could not find CIF atom loop with fractional coordinates.")
+
+    # Map header -> column index
+    col_index = {h: idx for idx, h in enumerate(header_lines)}
+    idx_label = col_index["_atom_site_label"]
+    idx_x = col_index["_atom_site_fract_x"]
+    idx_y = col_index["_atom_site_fract_y"]
+    idx_z = col_index["_atom_site_fract_z"]
+
+    species: List[str] = []
+    frac_coords: List[List[float]] = []
+
+    # Read until next loop_/data_/header or EOF
+    for k in range(data_start, len(text)):
+        line = text[k].strip()
+        if not line:
+            continue
+        if line.startswith("loop_") or line.startswith("data_") or line.startswith("_"):
+            break
+        parts = line.split()
+        if len(parts) <= max(idx_label, idx_x, idx_y, idx_z):
+            continue
+
+        label = parts[idx_label]
+        # Strip any trailing digits (e.g., "Ti1" -> "Ti") while keeping symbols like "Cl"
+        elem = "".join([ch for ch in label if ch.isalpha()])
+        if not elem:
+            elem = label
+
+        x = float(parts[idx_x])
+        y = float(parts[idx_y])
+        z = float(parts[idx_z])
+        species.append(elem)
+        frac_coords.append([x, y, z])
+
+    lattice = Lattice.from_parameters(a, b, c, alpha, beta, gamma)
+    return Structure(lattice, species, frac_coords, coords_are_cartesian=False, to_unit_cell=False)
+
+
+def _load_structure_preserve_positions(path_str: str) -> Structure:
+    """Load structure while preserving as-written fractional coords for CIF when possible."""
+    _require_build_deps()
+    path = Path(path_str)
+    if path.suffix.lower() == ".cif":
+        try:
+            return _read_cif_preserve_frac(path)
+        except Exception:
+            # Fall back to pymatgen parser if CIF isn't in the expected simple format
+            return Structure.from_file(str(path))
+    return Structure.from_file(str(path))
+
+
+def _split_heterojunction_into_layers(
+    struct: Structure,
+    layer1_elements: Set[str] | None = None,
+    layer2_elements: Set[str] | None = None,
+) -> Tuple[Structure, Structure, str, str]:
+    """
+    Split a heterojunction structure into two independent layers *without*
+    changing the lattice or coordinates.
+
+    Returns (layer1, layer2, layer1_label, layer2_label).
+    """
+    # Auto-detect for common oxide/perovskite interfaces (e.g., TiO2 + organo-lead halide)
+    if layer1_elements is None and layer2_elements is None:
+        present = {str(el) for el in struct.composition.elements}
+        if "Ti" in present and "O" in present:
+            layer1_elements = {"Ti", "O"}
+            layer2_elements = present - layer1_elements
+        else:
+            # Conservative fallback: use the first element as layer1, rest as layer2
+            # (user should ideally pass --layer1_elements/--layer2_elements for robustness)
+            elems = sorted(present)
+            layer1_elements = {elems[0]} if elems else set()
+            layer2_elements = set(elems[1:]) if len(elems) > 1 else set()
+
+    layer1_elements = set(layer1_elements or [])
+    layer2_elements = set(layer2_elements or [])
+
+    # If user provides only one side, infer the other
+    present = {str(el) for el in struct.composition.elements}
+    if layer1_elements and not layer2_elements:
+        layer2_elements = present - layer1_elements
+    if layer2_elements and not layer1_elements:
+        layer1_elements = present - layer2_elements
+
+    l1_species: List[str] = []
+    l1_frac: List[List[float]] = []
+    l2_species: List[str] = []
+    l2_frac: List[List[float]] = []
+
+    for site in struct:
+        sym = site.species_string
+        # species_string may include oxidation; for safety use element symbol-like alpha part
+        elem = "".join([ch for ch in sym if ch.isalpha()]) or sym
+        if elem in layer1_elements:
+            l1_species.append(site.species_string)
+            l1_frac.append(site.frac_coords.tolist())
+        elif elem in layer2_elements:
+            l2_species.append(site.species_string)
+            l2_frac.append(site.frac_coords.tolist())
+        else:
+            # If an element isn't in either set, assign it to layer2 by default
+            l2_species.append(site.species_string)
+            l2_frac.append(site.frac_coords.tolist())
+
+    layer1 = Structure(struct.lattice, l1_species, l1_frac, coords_are_cartesian=False, to_unit_cell=False)
+    layer2 = Structure(struct.lattice, l2_species, l2_frac, coords_are_cartesian=False, to_unit_cell=False)
+
+    label1 = "Layer 1"
+    label2 = "Layer 2"
+    if layer1_elements:
+        label1 = f"Layer 1 ({','.join(sorted(layer1_elements))})"
+    if layer2_elements:
+        label2 = f"Layer 2 ({','.join(sorted(layer2_elements))})"
+    return layer1, layer2, label1, label2
+
+
+def _parse_cif_atom_loop(lines: List[str]) -> tuple[
+    dict[str, float],
+    List[tuple[str, str, float, float, float]],
+]:
+    """
+    Parse a simple CIF (cell + fractional atom loop).
+
+    Returns
+    -------
+    cell : dict
+        Keys: a,b,c,alpha,beta,gamma
+    atoms : list of tuples
+        (label, elem, fx, fy, fz) in the order they appear in the CIF.
+    """
+
+    def _get_float(key: str) -> float:
+        for ln in lines:
+            if ln.strip().startswith(key):
+                parts = ln.split()
+                if len(parts) >= 2:
+                    return float(parts[1])
+        raise ValueError(f"Missing CIF key: {key}")
+
+    cell = {
+        "a": _get_float("_cell_length_a"),
+        "b": _get_float("_cell_length_b"),
+        "c": _get_float("_cell_length_c"),
+        "alpha": _get_float("_cell_angle_alpha"),
+        "beta": _get_float("_cell_angle_beta"),
+        "gamma": _get_float("_cell_angle_gamma"),
+    }
+
+    # Find atom loop with fractional coordinates
+    header_lines: List[str] = []
+    data_start: int | None = None
+    for i, ln in enumerate(lines):
+        if ln.strip() != "loop_":
+            continue
+        headers: List[str] = []
+        j = i + 1
+        while j < len(lines) and lines[j].strip().startswith("_"):
+            headers.append(lines[j].strip())
+            j += 1
+        need = {
+            "_atom_site_label",
+            "_atom_site_fract_x",
+            "_atom_site_fract_y",
+            "_atom_site_fract_z",
+        }
+        if need.issubset(set(headers)):
+            header_lines = headers
+            data_start = j
+            break
+    if data_start is None:
+        raise ValueError("Could not find CIF atom loop with fractional coordinates.")
+
+    col_index = {h: idx for idx, h in enumerate(header_lines)}
+    idx_label = col_index["_atom_site_label"]
+    idx_x = col_index["_atom_site_fract_x"]
+    idx_y = col_index["_atom_site_fract_y"]
+    idx_z = col_index["_atom_site_fract_z"]
+
+    atoms: List[tuple[str, str, float, float, float]] = []
+    for k in range(data_start, len(lines)):
+        line = lines[k].strip()
+        if not line:
+            continue
+        if line.startswith("loop_") or line.startswith("data_") or line.startswith("_"):
+            break
+        parts = line.split()
+        if len(parts) <= max(idx_label, idx_x, idx_y, idx_z):
+            continue
+        label = parts[idx_label]
+        elem = "".join([ch for ch in label if ch.isalpha()]) or label
+        fx = float(parts[idx_x])
+        fy = float(parts[idx_y])
+        fz = float(parts[idx_z])
+        atoms.append((label, elem, fx, fy, fz))
+
+    return cell, atoms
+
+
+def _lattice_vectors_from_cell(cell: dict[str, float]) -> List[List[float]]:
+    """Convert CIF cell parameters to lattice vectors (Å)."""
+    a = cell["a"]
+    b = cell["b"]
+    c = cell["c"]
+    alpha = cell["alpha"]
+    beta = cell["beta"]
+    gamma = cell["gamma"]
+
+    ar = math.radians(alpha)
+    br = math.radians(beta)
+    gr = math.radians(gamma)
+    ax, ay, az = a, 0.0, 0.0
+    bx, by, bz = b * math.cos(gr), b * math.sin(gr), 0.0
+    cx = c * math.cos(br)
+    sin_g = math.sin(gr)
+    if abs(sin_g) < 1e-12:
+        raise ValueError("Invalid gamma angle; sin(gamma) ~ 0.")
+    cy = c * (math.cos(ar) - math.cos(br) * math.cos(gr)) / sin_g
+    cz_sq = c * c - cx * cx - cy * cy
+    cz = math.sqrt(max(cz_sq, 0.0))
+    return [[ax, ay, az], [bx, by, bz], [cx, cy, cz]]
+
+
+def _write_poscar_simple(
+    path: Path,
+    comment: str,
+    lattice_vecs: List[List[float]],
+    atoms: List[tuple[str, str, float, float, float]],
+) -> None:
+    """Write a minimal POSCAR with Direct coordinates, grouping atoms by element."""
+    order: List[str] = []
+    counts: Dict[str, int] = {}
+    for _label, elem, *_ in atoms:
+        if elem not in counts:
+            counts[elem] = 0
+            order.append(elem)
+        counts[elem] += 1
+
+    grouped: List[tuple[str, str, float, float, float]] = []
+    for elem in order:
+        grouped.extend([a for a in atoms if a[1] == elem])
+
+    with path.open("w", encoding="utf-8") as f:
+        f.write(comment.strip() + "\n")
+        f.write("1.0\n")
+        for v in lattice_vecs:
+            f.write(f"{v[0]:.16f} {v[1]:.16f} {v[2]:.16f}\n")
+        f.write(" ".join(order) + "\n")
+        f.write(" ".join(str(counts[e]) for e in order) + "\n")
+        f.write("Direct\n")
+        for _label, _elem, fx, fy, fz in grouped:
+            f.write(f"{fx:.16f} {fy:.16f} {fz:.16f}\n")
+
+
+def _write_cif_simple(
+    path: Path,
+    data_name: str,
+    cell: dict[str, float],
+    atoms: List[tuple[str, str, float, float, float]],
+    header_comment: str | None = None,
+) -> None:
+    """
+    Write a simple CIF preserving fractional coordinates as provided (no wrapping).
+    """
+    with path.open("w", encoding="utf-8") as f:
+        if header_comment:
+            f.write(f"# {header_comment.strip()}\n")
+        f.write(f"data_{data_name}\n")
+        f.write(f"_cell_length_a   {cell['a']:.6f}\n")
+        f.write(f"_cell_length_b   {cell['b']:.6f}\n")
+        f.write(f"_cell_length_c   {cell['c']:.6f}\n")
+        f.write(f"_cell_angle_alpha  {cell['alpha']:.6f}\n")
+        f.write(f"_cell_angle_beta   {cell['beta']:.6f}\n")
+        f.write(f"_cell_angle_gamma  {cell['gamma']:.6f}\n")
+        f.write("loop_\n")
+        f.write("_symmetry_equiv_pos_as_xyz\n")
+        f.write("x,y,z\n")
+        f.write("loop_\n")
+        f.write("_atom_site_label\n")
+        f.write("_atom_site_fract_x\n")
+        f.write("_atom_site_fract_y\n")
+        f.write("_atom_site_fract_z\n")
+        for label, _elem, fx, fy, fz in atoms:
+            f.write(f"{label} {fx:.8f} {fy:.8f} {fz:.8f}\n")
+
+
+def split_layers_to_folder(input_path_str: str, out_base_dir: str | None = None, layer1_elements: str | None = None, layer2_elements: str | None = None) -> Path:
+    """
+    Split a heterojunction model file into independent layers and write to:
+      <out_base_dir or input_parent>/<input_stem>/
+    along with a copy of the original input file.
+
+    The written layer structures keep the original lattice and fractional coordinates unchanged.
+    """
+    input_path = Path(input_path_str)
+    if out_base_dir is None:
+        out_dir = input_path.parent / input_path.stem
+    else:
+        out_dir = Path(out_base_dir) / input_path.stem
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy original file alongside outputs
+    shutil.copy2(str(input_path), str(out_dir / input_path.name))
+
+    stem = input_path.stem
+    poscar1 = out_dir / f"{stem}_layer1.vasp"
+    poscar2 = out_dir / f"{stem}_layer2.vasp"
+    combined_path = out_dir / f"{stem}.vasp"
+
+    if _HAS_DEPS:
+        # Load with best-effort position preservation
+        struct = _load_structure_preserve_positions(str(input_path))
+
+        l1_set = {s.strip() for s in (layer1_elements or "").split(",") if s.strip()} or None
+        l2_set = {s.strip() for s in (layer2_elements or "").split(",") if s.strip()} or None
+        layer1, layer2, label1, label2 = _split_heterojunction_into_layers(struct, l1_set, l2_set)
+
+        comment1 = f"{label1} extracted from {input_path.name}; lattice+fractional coords unchanged."
+        comment2 = f"{label2} extracted from {input_path.name}; lattice+fractional coords unchanged."
+
+        Poscar(layer1, comment=comment1, sort_structure=False).write_file(poscar1)
+        Poscar(layer2, comment=comment2, sort_structure=False).write_file(poscar2)
+        Poscar(struct, comment=f"Original structure from {input_path.name}; lattice+fractional coords unchanged.", sort_structure=False).write_file(combined_path)
+
+        # Also provide CIF outputs for each layer (preserve fractional coords; no wrapping)
+        cell = {
+            "a": float(struct.lattice.a),
+            "b": float(struct.lattice.b),
+            "c": float(struct.lattice.c),
+            "alpha": float(struct.lattice.alpha),
+            "beta": float(struct.lattice.beta),
+            "gamma": float(struct.lattice.gamma),
+        }
+        # Keep site order as in the Structure objects
+        def _atoms_from_struct(s, prefix: str) -> List[tuple[str, str, float, float, float]]:
+            out: List[tuple[str, str, float, float, float]] = []
+            for i, site in enumerate(s):
+                elem = "".join([ch for ch in site.species_string if ch.isalpha()]) or site.species_string
+                label = f"{prefix}{i+1}"
+                fx, fy, fz = site.frac_coords.tolist()
+                out.append((label, elem, float(fx), float(fy), float(fz)))
+            return out
+
+        cif1 = out_dir / f"{stem}_layer1.cif"
+        cif2 = out_dir / f"{stem}_layer2.cif"
+        # Keep the original CIF copy untouched; write combined CIF with a distinct name.
+        cif_combined = out_dir / f"{stem}_combined.cif"
+        _write_cif_simple(cif1, f"{stem}_layer1", cell, _atoms_from_struct(layer1, "L1"), header_comment=comment1)
+        _write_cif_simple(cif2, f"{stem}_layer2", cell, _atoms_from_struct(layer2, "L2"), header_comment=comment2)
+        _write_cif_simple(cif_combined, stem, cell, _atoms_from_struct(struct, "A"), header_comment=f"Original structure from {input_path.name}; lattice+fractional coords unchanged.")
+    else:
+        # CIF-only fallback without numpy/pymatgen: parse CIF, split by element sets, write POSCARs.
+        if input_path.suffix.lower() != ".cif":
+            raise RuntimeError(
+                "Split-layer mode without numpy/pymatgen currently supports CIF inputs only. "
+                "Either install dependencies or provide a CIF."
+            )
+
+        lines = input_path.read_text(errors="ignore").splitlines()
+        cell, all_atoms = _parse_cif_atom_loop(lines)
+        lattice_vecs = _lattice_vectors_from_cell(cell)
+
+        present = {elem for (_label, elem, *_xyz) in all_atoms}
+        l1_set = {s.strip() for s in (layer1_elements or "").split(",") if s.strip()}
+        l2_set = {s.strip() for s in (layer2_elements or "").split(",") if s.strip()}
+        if not l1_set and not l2_set:
+            if "Ti" in present and "O" in present:
+                l1_set = {"Ti", "O"}
+                l2_set = present - l1_set
+            else:
+                elems = sorted(present)
+                l1_set = {elems[0]} if elems else set()
+                l2_set = set(elems[1:]) if len(elems) > 1 else set()
+        if l1_set and not l2_set:
+            l2_set = present - l1_set
+        if l2_set and not l1_set:
+            l1_set = present - l2_set
+
+        label1 = f"Layer 1 ({','.join(sorted(l1_set))})" if l1_set else "Layer 1"
+        label2 = f"Layer 2 ({','.join(sorted(l2_set))})" if l2_set else "Layer 2"
+
+        layer1_atoms = [a for a in all_atoms if a[1] in l1_set]
+        layer2_atoms = [a for a in all_atoms if a[1] in l2_set or a[1] not in l1_set]
+
+        comment1 = f"{label1} extracted from {input_path.name}; lattice+fractional coords unchanged."
+        comment2 = f"{label2} extracted from {input_path.name}; lattice+fractional coords unchanged."
+
+        _write_poscar_simple(poscar1, comment1, lattice_vecs, layer1_atoms)
+        _write_poscar_simple(poscar2, comment2, lattice_vecs, layer2_atoms)
+        _write_poscar_simple(combined_path, f"Original structure from {input_path.name}; lattice+fractional coords unchanged.", lattice_vecs, all_atoms)
+
+        # Also provide CIF outputs
+        cif1 = out_dir / f"{stem}_layer1.cif"
+        cif2 = out_dir / f"{stem}_layer2.cif"
+        # Keep the original CIF copy untouched; write combined CIF with a distinct name.
+        cif_combined = out_dir / f"{stem}_combined.cif"
+        _write_cif_simple(cif1, f"{stem}_layer1", cell, layer1_atoms, header_comment=comment1)
+        _write_cif_simple(cif2, f"{stem}_layer2", cell, layer2_atoms, header_comment=comment2)
+        _write_cif_simple(cif_combined, stem, cell, all_atoms, header_comment=f"Original structure from {input_path.name}; lattice+fractional coords unchanged.")
+
+    print("Wrote split layers to:", out_dir)
+    print(" - Original:", out_dir / input_path.name)
+    print(" - Layer 1 :", poscar1)
+    print(" - Layer 2 :", poscar2)
+    print(" - Combined:", combined_path)
+    cif_combined_path = out_dir / f"{stem}_combined.cif"
+    if cif_combined_path.exists():
+        print(" - CIF combined:", cif_combined_path)
+    return out_dir
 
 def get_primitive(struct):
     """Return primitive cell if found, else the original structure."""
@@ -296,6 +794,9 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
     Align and stack two slabs with proper lattice matching.
     Uses the original slab lattices directly without modification to preserve structure integrity.
     Returns bottom, top, and combined structures, where bottom and top are properly separated.
+    
+    When vacuum=0 or very small, special care is taken to prevent atoms from crossing
+    layer boundaries due to periodic boundary wrapping.
     """
     # Copy slabs to avoid modifying originals
     bottom = slab_bottom.copy()
@@ -377,23 +878,47 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
     combined_lat_matrix = np.vstack([a_vec, b_vec, c_vec])
     combined_lattice = Lattice(combined_lat_matrix)
     
-    # Create structures with the combined lattice for bottom and top
-    # This ensures they use the same lattice as the combined structure
-    # Convert bottom slab to use combined lattice
+    # Calculate the interface z-boundary in fractional coordinates
+    # The interface is between max_proj_bottom and (max_proj_bottom + separation)
+    # We use the midpoint as the boundary
+    interface_z_cart = max_proj_bottom + separation / 2.0
+    interface_z_frac = interface_z_cart / total_z if total_z > 1e-8 else 0.5
+    
+    # Convert bottom slab to use combined lattice with layer-aware wrapping
     bottom_cart_coords = bottom.cart_coords
-    bottom_frac_coords = [combined_lattice.get_fractional_coords(coord) for coord in bottom_cart_coords]
-    # Wrap fractional coordinates to [0, 1)
-    bottom_frac_coords = [(fc % 1.0) for fc in bottom_frac_coords]
+    bottom_frac_coords = []
+    for coord in bottom_cart_coords:
+        fc = combined_lattice.get_fractional_coords(coord)
+        # Wrap x and y to [0, 1)
+        fc_x = fc[0] % 1.0
+        fc_y = fc[1] % 1.0
+        # For z: bottom atoms should stay below interface_z_frac
+        fc_z = fc[2] % 1.0
+        # If wrapping moved the atom to the top region, shift it back down
+        if fc_z > interface_z_frac + 0.1:
+            fc_z = fc_z - 1.0
+        bottom_frac_coords.append(np.array([fc_x, fc_y, fc_z]))
+    
     bottom_separated = Structure(combined_lattice,
                                 bottom.species,
                                 bottom_frac_coords,
                                 coords_are_cartesian=False)
     
-    # Convert top slab to use combined lattice
+    # Convert top slab to use combined lattice with layer-aware wrapping
     top_cart_coords = top.cart_coords
-    top_frac_coords = [combined_lattice.get_fractional_coords(coord) for coord in top_cart_coords]
-    # Wrap fractional coordinates to [0, 1)
-    top_frac_coords = [(fc % 1.0) for fc in top_frac_coords]
+    top_frac_coords = []
+    for coord in top_cart_coords:
+        fc = combined_lattice.get_fractional_coords(coord)
+        # Wrap x and y to [0, 1)
+        fc_x = fc[0] % 1.0
+        fc_y = fc[1] % 1.0
+        # For z: top atoms should stay above interface_z_frac
+        fc_z = fc[2] % 1.0
+        # If wrapping moved the atom to the bottom region, shift it back up
+        if fc_z < interface_z_frac - 0.1:
+            fc_z = fc_z + 1.0
+        top_frac_coords.append(np.array([fc_x, fc_y, fc_z]))
+    
     top_separated = Structure(combined_lattice,
                             top.species,
                             top_frac_coords,
@@ -402,6 +927,9 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
     # Create combined structure by adding all sites
     combined = Structure(combined_lattice, [], [])
     
+    # Track indices for potential correction
+    n_bottom = len(bottom_separated)
+    
     # Add bottom slab sites first
     for site in bottom_separated:
         combined.append(site.species_string, site.frac_coords, coords_are_cartesian=False)
@@ -409,6 +937,38 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
     # Add top slab sites
     for site in top_separated:
         combined.append(site.species_string, site.frac_coords, coords_are_cartesian=False)
+    
+    # Final verification and correction for small vacuum cases
+    if vacuum < 2.0:
+        corrections_made = 0
+        # Check bottom atoms - should be below interface
+        for i in range(n_bottom):
+            site = combined[i]
+            if site.frac_coords[2] > interface_z_frac + 0.05:
+                new_z = site.frac_coords[2] - 1.0
+                new_frac = np.array([site.frac_coords[0], site.frac_coords[1], new_z])
+                combined.replace(i, site.species_string, new_frac, coords_are_cartesian=False)
+                corrections_made += 1
+        # Check top atoms - should be above interface
+        for i in range(n_bottom, len(combined)):
+            site = combined[i]
+            if site.frac_coords[2] < interface_z_frac - 0.05:
+                new_z = site.frac_coords[2] + 1.0
+                new_frac = np.array([site.frac_coords[0], site.frac_coords[1], new_z])
+                combined.replace(i, site.species_string, new_frac, coords_are_cartesian=False)
+                corrections_made += 1
+        
+        if corrections_made > 0:
+            print(f"Layer crossing prevention: Corrected {corrections_made} atom(s) at periodic boundary")
+            # Rebuild separated structures from combined to ensure consistency
+            bottom_separated = Structure(combined_lattice,
+                                        [combined[i].species_string for i in range(n_bottom)],
+                                        [combined[i].frac_coords for i in range(n_bottom)],
+                                        coords_are_cartesian=False)
+            top_separated = Structure(combined_lattice,
+                                     [combined[i].species_string for i in range(n_bottom, len(combined))],
+                                     [combined[i].frac_coords for i in range(n_bottom, len(combined))],
+                                     coords_are_cartesian=False)
     
     # Sort combined by z-coordinate for better ordering
     combined.sort(key=lambda site: site.frac_coords[2])
@@ -615,10 +1175,54 @@ def build_interface_from_builder(
     )
 
     combined = interface.copy()
-    combined.sort(key=lambda site: site.frac_coords[2])
-
+    
+    # Extract bottom (substrate) and top (film) structures
     bottom = Structure.from_sites(interface.substrate_sites)
     top = Structure.from_sites(interface.film_sites)
+    
+    # Fix layer crossing when vacuum is small
+    if vacuum < 2.0 and len(bottom) > 0 and len(top) > 0:
+        # Calculate interface boundary based on z-projections
+        lattice = combined.lattice
+        c_vec = lattice.matrix[2]
+        c_length = np.linalg.norm(c_vec)
+        c_unit = c_vec / c_length if c_length > 1e-8 else np.array([0, 0, 1])
+        
+        # Get z-projections for substrate and film
+        substrate_z = np.dot(bottom.cart_coords, c_unit)
+        film_z = np.dot(top.cart_coords, c_unit)
+        
+        # Interface boundary is between max of substrate and min of film
+        interface_z_cart = (np.max(substrate_z) + np.min(film_z)) / 2.0
+        interface_z_frac = interface_z_cart / c_length if c_length > 1e-8 else 0.5
+        
+        # Fix substrate (bottom) atoms that crossed to top region
+        corrections_made = 0
+        for i, site in enumerate(bottom):
+            fc = site.frac_coords.copy()
+            if fc[2] > interface_z_frac + 0.1:
+                fc[2] = fc[2] - 1.0
+                bottom.replace(i, site.species_string, fc, coords_are_cartesian=False)
+                corrections_made += 1
+        
+        # Fix film (top) atoms that crossed to bottom region
+        for i, site in enumerate(top):
+            fc = site.frac_coords.copy()
+            if fc[2] < interface_z_frac - 0.1:
+                fc[2] = fc[2] + 1.0
+                top.replace(i, site.species_string, fc, coords_are_cartesian=False)
+                corrections_made += 1
+        
+        if corrections_made > 0:
+            print(f"Layer crossing prevention (builder): Corrected {corrections_made} atom(s)")
+            # Rebuild combined structure with corrected positions
+            combined = Structure(lattice, [], [])
+            for site in bottom:
+                combined.append(site.species_string, site.frac_coords, coords_are_cartesian=False)
+            for site in top:
+                combined.append(site.species_string, site.frac_coords, coords_are_cartesian=False)
+    
+    combined.sort(key=lambda site: site.frac_coords[2])
 
     return bottom, top, combined
 
@@ -978,8 +1582,22 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Auto build matched heterojunction interface from two bulks.")
-    p.add_argument("--a", dest="afile", required=True, help="File for material A (CIF/POSCAR)")
-    p.add_argument("--b", dest="bfile", required=True, help="File for material B (CIF/POSCAR)")
+    # Build-mode inputs (kept for backwards compatibility)
+    p.add_argument("--a", dest="afile", required=False, help="File for material A (CIF/POSCAR)")
+    p.add_argument("--b", dest="bfile", required=False, help="File for material B (CIF/POSCAR)")
+
+    # Split-mode inputs
+    p.add_argument(
+        "--split_layers",
+        dest="split_layers",
+        action="store_true",
+        help="Split an existing heterojunction structure into independent layers (no coordinate shifts).",
+    )
+    p.add_argument("--input", dest="input_file", required=False, help="Heterojunction structure file to split (CIF/POSCAR).")
+    p.add_argument("--out_base_dir", dest="out_base_dir", required=False, default=None, help="Base directory to place <input_stem>/ folder (default: input's parent).")
+    p.add_argument("--layer1_elements", dest="layer1_elements", required=False, default=None, help="Comma-separated element symbols for layer 1 (e.g., 'Ti,O').")
+    p.add_argument("--layer2_elements", dest="layer2_elements", required=False, default=None, help="Comma-separated element symbols for layer 2 (optional).")
+
     p.add_argument("--miller_a", dest="miller_a", default="0,0,1", help="Miller for A, e.g. 0,0,1")
     p.add_argument("--miller_b", dest="miller_b", default="1,0,1", help="Miller for B")
     p.add_argument("--slab_thickness_a", dest="stka", type=float, default=20.0, help="Slab thickness for A (Å)")
@@ -993,8 +1611,22 @@ if __name__ == "__main__":
     p.add_argument("--max_atoms", dest="max_atoms", type=int, default=400, help="Maximum number of atoms in final structure (default: 400)")
     args = p.parse_args()
 
-    miller_a = tuple(map(int, args.miller_a.split(',')))
-    miller_b = tuple(map(int, args.miller_b.split(',')))
+    if args.split_layers:
+        if not args.input_file:
+            raise SystemExit("Error: --split_layers requires --input <heterojunction_file>.")
+        split_layers_to_folder(
+            args.input_file,
+            out_base_dir=args.out_base_dir,
+            layer1_elements=args.layer1_elements,
+            layer2_elements=args.layer2_elements,
+        )
+        raise SystemExit(0)
+
+    if not args.afile or not args.bfile:
+        raise SystemExit("Error: build mode requires --a and --b (or use --split_layers).")
+
+    miller_a = tuple(map(int, args.miller_a.split(",")))
+    miller_b = tuple(map(int, args.miller_b.split(",")))
 
     auto_run(args.afile, args.bfile, miller_a, miller_b,
              args.stka, args.stkb, args.vac, args.sep,

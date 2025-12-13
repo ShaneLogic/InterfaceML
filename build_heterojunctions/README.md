@@ -1,11 +1,11 @@
 # Auto Interface Builder - Usage Guide
 
-This guide provides examples of how to use `auto_interface_builder.py` and `fix_interface_layers.py` to build heterojunction interfaces with selective dynamics for DFT relaxation calculations.
+This guide provides examples of how to use `interface_builder.py` and `fix_interface_layers.py` to build heterojunction interfaces with selective dynamics for DFT relaxation calculations.
 
 ## Overview
 
 The workflow consists of two steps:
-1. **Generate interface structure** using `auto_interface_builder.py`
+1. **Generate interface structure** using `interface_builder.py`
 2. **Add selective dynamics** using `fix_interface_layers.py` to relax interface layers and fix bulk layers
 
 ## Step 1: Generate Interface Structure
@@ -13,7 +13,7 @@ The workflow consists of two steps:
 ### Basic Usage
 
 ```bash
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a structures/perovskites/H6PbCI3N.cif \
     --b structures/etl/TiO2.cif \
     --miller_a 0,0,1 \
@@ -46,11 +46,44 @@ python build_heterojunctions/auto_interface_builder.py \
 
 ### Output Files from Step 1
 
-The script generates three POSCAR files:
+The script generates three POSCAR files (base name is `<A>@<B>` derived from filenames):
 
-1. `auto_interface_bottom_strained.vasp` - Bottom slab (substrate) structure
-2. `auto_interface_top_strained.vasp` - Top slab (film) structure  
-3. `auto_interface_combined.vasp` - Combined heterojunction structure (input for Step 2)
+1. `<A>@<B>_bottom_strained.vasp` - Bottom slab (substrate) structure
+2. `<A>@<B>_top_strained.vasp` - Top slab (film) structure  
+3. `<A>@<B>.vasp` - Combined heterojunction structure (input for Step 2)
+
+## Split an Existing Heterojunction into Independent Layers (for Differential Charge)
+
+If you already have a heterojunction model (e.g. a CIF exported from Multiwfn) and need to split it into
+independent layers while keeping the **relative positions inside the unit cell unchanged**, use:
+
+```bash
+python build_heterojunctions/interface_builder.py \
+    --split_layers \
+    --input structures/heterojunctions/PROJECT-1.cif
+```
+
+### Optional Parameters
+
+- `--out_base_dir`: Base directory to place the output folder `<input_stem>/` (default: input's parent directory)
+- `--layer1_elements`: Comma-separated element symbols for layer 1 (e.g., `Ti,O`)
+- `--layer2_elements`: Comma-separated element symbols for layer 2 (optional; inferred if not provided)
+
+### Output Files
+
+For an input file `PROJECT-1.cif`, the script creates:
+
+- Output folder: `structures/heterojunctions/PROJECT-1/`
+- A copy of the original file: `PROJECT-1.cif`
+- Layer structures (VASP): `PROJECT-1_layer1.vasp`, `PROJECT-1_layer2.vasp`, and `PROJECT-1.vasp`
+- Layer structures (CIF): `PROJECT-1_layer1.cif`, `PROJECT-1_layer2.cif`, and `PROJECT-1_combined.cif`
+
+### Important Notes (Position Preservation)
+
+- The split-layer mode is designed for differential charge workflows: it does **not** translate, center, or wrap
+  fractional coordinates to `[0, 1)`. This preserves the relative positions of independent layers inside the cell.
+- If `--layer1_elements/--layer2_elements` are not provided, the script tries to auto-detect common oxide/perovskite
+  interfaces (e.g. `Ti/O` as one layer).
 
 ## Step 2: Add Selective Dynamics
 
@@ -58,8 +91,8 @@ The script generates three POSCAR files:
 
 ```bash
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
+    <A>@<B>.vasp \
+    -o <A>@<B>_relaxed.vasp \
     -n 2 \
     -t 2.0
 ```
@@ -94,7 +127,7 @@ direct
 **Step 1**: Generate interface structure
 
 ```bash
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a structures/perovskites/H6PbCI3N.cif \
     --b structures/etl/TiO2.cif \
     --miller_a 0,0,1 \
@@ -110,8 +143,8 @@ python build_heterojunctions/auto_interface_builder.py \
 
 ```bash
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
+    <A>@<B>.vasp \
+    -o <A>@<B>_relaxed.vasp \
     -n 2 \
     -t 2.0 \
     -m density_gap
@@ -125,7 +158,7 @@ To relax 3 layers on each side of the interface:
 
 ```bash
 # Step 1: Generate interface
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a structures/perovskites/H6PbCI3N.cif \
     --b structures/etl/TiO2.cif \
     --miller_a 0,0,1 \
@@ -138,8 +171,8 @@ python build_heterojunctions/auto_interface_builder.py \
 
 # Step 2: Add selective dynamics with 3 layers
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
+    <A>@<B>.vasp \
+    -o <A>@<B>_relaxed.vasp \
     -n 3 \
     -t 2.5
 ```
@@ -148,7 +181,7 @@ python build_heterojunctions/fix_interface_layers.py \
 
 ```bash
 # Step 1: Generate small interface
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a structures/perovskites/H6PbCI3N.cif \
     --b structures/etl/TiO2.cif \
     --miller_a 0,0,1 \
@@ -165,7 +198,7 @@ python build_heterojunctions/auto_interface_builder.py \
 
 # Step 2: Add selective dynamics
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
+    <A>@<B>.vasp \
     -n 1 \
     -t 2.0
 ```
@@ -174,7 +207,7 @@ python build_heterojunctions/fix_interface_layers.py \
 
 ```bash
 # Step 1: Generate interface with split strain
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a structures/perovskites/H6PbCI3N.cif \
     --b structures/etl/TiO2.cif \
     --miller_a 0,0,1 \
@@ -187,7 +220,7 @@ python build_heterojunctions/auto_interface_builder.py \
 
 # Step 2: Add selective dynamics
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
+    <A>@<B>.vasp \
     -n 2 \
     -t 2.0
 ```
@@ -196,7 +229,7 @@ python build_heterojunctions/fix_interface_layers.py \
 
 ```bash
 # Step 1: Generate interface
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a structures/perovskites/H6PbCI3N.cif \
     --b structures/etl/TiO2.cif \
     --miller_a 0,0,1 \
@@ -209,7 +242,7 @@ python build_heterojunctions/auto_interface_builder.py \
 
 # Step 2: Use median method for interface identification
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
+    <A>@<B>.vasp \
     -n 2 \
     -t 2.0 \
     -m median
@@ -255,7 +288,7 @@ This is ideal for DFT calculations where you want to:
 
 ```bash
 # Step 1: Generate interface
-python build_heterojunctions/auto_interface_builder.py \
+python build_heterojunctions/interface_builder.py \
     --a <structure_A> \
     --b <structure_B> \
     --miller_a <h,k,l> \
@@ -265,8 +298,8 @@ python build_heterojunctions/auto_interface_builder.py \
 
 # Step 2: Add selective dynamics
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
+    <A>@<B>.vasp \
+    -o <A>@<B>_relaxed.vasp \
     -n 2 \
     -t 2.0
 ```
@@ -275,12 +308,12 @@ This generates a structure ready for DFT relaxation calculations with interface 
 
 ## Step 3: Stack Pre-relaxed Slabs (Alternative Workflow)
 
-If you have pre-relaxed slab structures and want to stack them with a specific gap, you can use `stack_slabs.py`:
+If you have pre-relaxed slab structures and want to stack them with a specific gap, you can use `stack_slabs_relax.py`:
 
 ### Basic Usage
 
 ```bash
-python build_heterojunctions/stack_slabs.py <slab1_file> <slab2_file> [gap_in_angstrom] [vacuum_in_angstrom] [output_file]
+python build_heterojunctions/stack_slabs_relax.py <slab1_file> <slab2_file> [gap_in_angstrom] [vacuum_in_angstrom] [output_file]
 ```
 
 ### Parameters
@@ -296,7 +329,7 @@ python build_heterojunctions/stack_slabs.py <slab1_file> <slab2_file> [gap_in_an
 **Example 1**: Stack two pre-relaxed slabs with 3 Å gap and 20 Å vacuum
 
 ```bash
-python build_heterojunctions/stack_slabs.py \
+python build_heterojunctions/stack_slabs_relax.py \
     relax_slab/fapbi3_slab_relax.vasp \
     relax_slab/tio2_fa_slab_relax.vasp \
     3.0 \
@@ -313,7 +346,7 @@ This will create `relax_slab/fapbi3@tio2_fa_stacked.vasp` with structure:
 **Example 2**: Stack slabs with custom gap and vacuum
 
 ```bash
-python build_heterojunctions/stack_slabs.py \
+python build_heterojunctions/stack_slabs_relax.py \
     relax_slab/fapbi3_slab_relax.vasp \
     relax_slab/tio2_fa_slab_relax.vasp \
     5.0 \
@@ -323,7 +356,7 @@ python build_heterojunctions/stack_slabs.py \
 **Example 3**: Stack with different spacing and custom output name
 
 ```bash
-python build_heterojunctions/stack_slabs.py \
+python build_heterojunctions/stack_slabs_relax.py \
     relax_slab/mapbi3_slab_relax.vasp \
     relax_slab/tio2_ma_slab_relax.vasp \
     3.2 \
