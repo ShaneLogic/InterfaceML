@@ -20,7 +20,7 @@ import argparse
 import math
 from pathlib import Path
 import shutil
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Set, Tuple, Optional
 
 # Optional heavy dependencies (needed for build workflow).
 # Split-layer workflow can run without them for CIF inputs.
@@ -678,6 +678,888 @@ def build_slab(struct, miller, min_slab_size, vacuum, center_slab=True):
     if len(slabs) == 0:
         raise RuntimeError(f"No slabs generated for miller {miller}")
     return slabs[0]
+
+
+def _interface_normal_unit_from_lattice(lattice: Lattice) -> np.ndarray:
+    """
+    Compute the unit normal of the slab surface from the in-plane lattice vectors.
+
+    For a well-formed slab, a and b span the surface plane, and c is (approximately)
+    along the surface normal. We compute n = (a x b) / |a x b| and orient it to have
+    a positive dot product with c.
+    """
+    a_vec = np.array(lattice.matrix[0], dtype=float)
+    b_vec = np.array(lattice.matrix[1], dtype=float)
+    c_vec = np.array(lattice.matrix[2], dtype=float)
+    n = np.cross(a_vec, b_vec)
+    norm = float(np.linalg.norm(n))
+    if norm < 1e-12:
+        raise ValueError("Degenerate in-plane lattice vectors; cannot define surface normal.")
+    n = n / norm
+    if float(np.dot(n, c_vec)) < 0.0:
+        n *= -1.0
+    return n
+
+
+def _element_symbol(site_species_string: str) -> str:
+    """Extract element-like symbol from a species string (e.g., 'Pb2+' -> 'Pb')."""
+    sym = "".join([ch for ch in site_species_string if ch.isalpha()]) or site_species_string
+    return sym
+
+
+def _top_layer_elements(struct: Structure, normal_unit: np.ndarray, layer_thickness: float = 1.5) -> Set[str]:
+    """
+    Return a set of element symbols found in the top-most atomic layer.
+
+    The "top layer" is defined as sites whose projection along the surface normal
+    is within `layer_thickness` Å of the maximum projection.
+    """
+    if len(struct) == 0:
+        return set()
+    proj = np.dot(np.asarray(struct.cart_coords, dtype=float), normal_unit)
+    max_p = float(np.max(proj))
+    mask = proj >= (max_p - float(layer_thickness))
+    elems = {_element_symbol(struct[i].species_string) for i in np.where(mask)[0].tolist()}
+    return elems
+
+
+def _organic_components(struct: Structure) -> List[List[int]]:
+    """
+    Identify connected components for organic fragments (C/N/H only).
+
+    This is a lightweight, distance-cutoff based connectivity finder designed to
+    detect whether A-site organic cations (e.g., MA/FA) are intact at a surface termination.
+
+    Returns
+    -------
+    components : list of list of int
+        Each component is a list of site indices in `struct`.
+    """
+    _require_build_deps()
+    # Bond cutoffs (Å): generous to avoid missing connectivity due to relaxation.
+    cutoffs: Dict[Tuple[str, str], float] = {
+        ("C", "N"): 1.75,
+        ("N", "C"): 1.75,
+        ("C", "H"): 1.25,
+        ("H", "C"): 1.25,
+        ("N", "H"): 1.25,
+        ("H", "N"): 1.25,
+    }
+
+    organic_idx: List[int] = []
+    organic_elem: Dict[int, str] = {}
+    for i, site in enumerate(struct):
+        elem = _element_symbol(site.species_string)
+        if elem in {"C", "N", "H"}:
+            organic_idx.append(i)
+            organic_elem[i] = elem
+
+    if not organic_idx:
+        return []
+
+    organic_set = set(organic_idx)
+    adj: Dict[int, List[int]] = {i: [] for i in organic_idx}
+
+    # Build adjacency by local neighbor search.
+    # Use a single radius that covers the largest cutoff.
+    radius = 2.2
+    for i in organic_idx:
+        elem_i = organic_elem[i]
+        neighs = struct.get_neighbors(struct[i], r=radius)
+        for nb in neighs:
+            j = int(nb.index)
+            if j not in organic_set or j == i:
+                continue
+            elem_j = organic_elem[j]
+            key = (elem_i, elem_j)
+            dmax = cutoffs.get(key)
+            if dmax is None:
+                continue
+            if float(nb.nn_distance) <= float(dmax):
+                adj[i].append(j)
+
+    # Connected components (BFS)
+    visited: Set[int] = set()
+    comps: List[List[int]] = []
+    for i in organic_idx:
+        if i in visited:
+            continue
+        queue = [i]
+        visited.add(i)
+        comp: List[int] = []
+        while queue:
+            u = queue.pop()
+            comp.append(u)
+            for v in adj.get(u, []):
+                if v not in visited:
+                    visited.add(v)
+                    queue.append(v)
+        comps.append(comp)
+    return comps
+
+
+def _classify_surface_organic_components(
+    struct: Structure,
+    normal_unit: np.ndarray,
+    surface_window: float = 6.0,
+    max_component_thickness: float = 4.5,
+) -> Dict[str, int]:
+    """
+    Count intact organic A-site cations (MA/FA) and surface fragments near the top surface.
+
+    The "top surface region" is defined as sites within `surface_window` Å of the
+    maximum projection along the surface normal.
+    """
+    _require_build_deps()
+    if len(struct) == 0:
+        return {"fa_intact": 0, "fa_fragments": 0}
+
+    proj = np.dot(np.asarray(struct.cart_coords, dtype=float), normal_unit)
+    slab_top = float(np.max(proj))
+
+    def in_top_region(indices: List[int]) -> bool:
+        return any(float(proj[i]) >= slab_top - float(surface_window) for i in indices)
+
+    comps = _organic_components(struct)
+    fa_intact = 0
+    ma_intact = 0
+    fragments = 0
+    for comp in comps:
+        if not in_top_region(comp):
+            continue
+        elems = [_element_symbol(struct[i].species_string) for i in comp]
+        c = elems.count("C")
+        n = elems.count("N")
+        h = elems.count("H")
+        comp_max = float(np.max([proj[i] for i in comp]))
+        comp_min = float(np.min([proj[i] for i in comp]))
+        thickness = comp_max - comp_min
+
+        # FA (formamidinium): CH(NH2)2+ -> C1 N2 H5 (often H count may vary slightly after editing/relaxation).
+        is_fa = (c == 1) and (n == 2) and (h >= 4)
+        # MA (methylammonium): CH3NH3+ -> C1 N1 H6 (allow small deviations).
+        is_ma = (c == 1) and (n == 1) and (h >= 4)
+
+        if is_fa and thickness <= float(max_component_thickness):
+            fa_intact += 1
+        elif is_ma and thickness <= float(max_component_thickness):
+            ma_intact += 1
+        else:
+            fragments += 1
+    return {
+        "fa_intact": fa_intact,
+        "ma_intact": ma_intact,
+        "a_intact": fa_intact + ma_intact,
+        "a_fragments": fragments,
+    }
+
+
+# Backwards-compatible alias (older internal name).
+def _fa_molecule_components(struct: Structure) -> List[List[int]]:
+    return _organic_components(struct)
+
+
+def _classify_surface_fa_components(
+    struct: Structure,
+    normal_unit: np.ndarray,
+    surface_window: float = 6.0,
+    max_component_thickness: float = 4.5,
+) -> Dict[str, int]:
+    # Kept for backwards compatibility; prefer _classify_surface_organic_components.
+    stats = _classify_surface_organic_components(
+        struct,
+        normal_unit,
+        surface_window=surface_window,
+        max_component_thickness=max_component_thickness,
+    )
+    return {"fa_intact": int(stats["fa_intact"]), "fa_fragments": int(stats["a_fragments"])}
+
+
+def _surface_region_indices(struct: Structure, normal_unit: np.ndarray, which: str, window: float) -> List[int]:
+    """Return site indices within `window` Å of the chosen surface ('top' or 'bottom')."""
+    _require_build_deps()
+    which = which.strip().lower()
+    if which not in {"top", "bottom"}:
+        raise ValueError("which must be 'top' or 'bottom'")
+    if len(struct) == 0:
+        return []
+    proj = np.dot(np.asarray(struct.cart_coords, dtype=float), normal_unit)
+    if which == "top":
+        ref = float(np.max(proj))
+        mask = proj >= (ref - float(window))
+    else:
+        ref = float(np.min(proj))
+        mask = proj <= (ref + float(window))
+    return np.where(mask)[0].tolist()
+
+
+def _surface_layer_elements(struct: Structure, normal_unit: np.ndarray, which: str, thickness: float = 1.5) -> Set[str]:
+    """
+    Return element symbols in the outermost atomic layer of a surface.
+
+    The layer is defined by a projection window of `thickness` Å from the extreme
+    (max for 'top', min for 'bottom') along the slab normal.
+    """
+    _require_build_deps()
+    idx = _surface_region_indices(struct, normal_unit, which=which, window=float(thickness))
+    return {_element_symbol(struct[i].species_string) for i in idx}
+
+
+def _surface_signature(struct: Structure, normal_unit: np.ndarray, which: str, window: float = 4.0) -> Dict[str, int]:
+    """
+    Compute a lightweight signature for a slab surface region.
+
+    Returns booleans as ints: has_pb, has_i, has_c, has_n, plus fa_intact/fa_fragments.
+    """
+    idx = _surface_region_indices(struct, normal_unit, which=which, window=float(window))
+    elems = {_element_symbol(struct[i].species_string) for i in idx}
+    org = _classify_surface_organic_components(struct, normal_unit, surface_window=float(window), max_component_thickness=4.5)
+    return {
+        "has_pb": int("Pb" in elems),
+        "has_i": int("I" in elems),
+        "has_c": int("C" in elems),
+        "has_n": int("N" in elems),
+        "fa_intact": int(org["fa_intact"]),
+        "ma_intact": int(org["ma_intact"]),
+        "a_intact": int(org["a_intact"]),
+        "a_fragments": int(org["a_fragments"]),
+    }
+
+
+def _flip_structure_along_normal(struct: Structure, normal_unit: np.ndarray) -> Structure:
+    """
+    Mirror a structure along the slab normal to swap top/bottom surfaces.
+
+    This keeps the lattice unchanged and mirrors cartesian coordinates around the
+    mid-plane between the minimum and maximum projection along the normal.
+    """
+    _require_build_deps()
+    if len(struct) == 0:
+        return struct.copy()
+    cart = np.asarray(struct.cart_coords, dtype=float)
+    proj = np.dot(cart, normal_unit)
+    pmin = float(np.min(proj))
+    pmax = float(np.max(proj))
+    delta = (pmin + pmax) - 2.0 * proj
+    cart_new = cart + np.outer(delta, normal_unit)
+    lat = struct.lattice
+    frac_new = [lat.get_fractional_coords(v) for v in cart_new]
+    return Structure(lat, struct.species, frac_new, coords_are_cartesian=False, to_unit_cell=True)
+
+
+def _choose_perovskite_termination_slab(
+    bulk: Structure,
+    miller: Tuple[int, int, int],
+    slab_thickness: float,
+    vacuum: float,
+    termination: str,
+    top_layer_thickness: float = 4.0,
+    symmetric: bool = True,
+) -> Structure:
+    """
+    Build a perovskite slab with a user-selected terminating surface.
+
+    Terminology (following common ABX3 perovskite conventions)
+    - "PbI" termination: inorganic (B+X) rich surface, expected to expose Pb and I.
+    - "FAI" termination: organic (A+X) rich surface, expected to expose C/N (FA) and I.
+
+    Implementation detail
+    ---------------------
+    We generate all candidate terminations from SlabGenerator and score them based on
+    the element set found in the top-most layer. This heuristic is robust enough for
+    typical pseudo-cubic perovskite slabs used in DFT input generation.
+    """
+    _require_build_deps()
+    term = termination.strip().upper()
+    # Supported terminations for lead-iodide perovskites:
+    # - PbI: inorganic termination
+    # - FAI: FA + I termination
+    # - MAI: MA + I termination
+    # - AI: generic A-site organic + I termination (accepts MA and/or FA, useful for mixed-cation perovskites)
+    if term not in {"PBI", "FAI", "MAI", "AI"}:
+        raise ValueError("termination must be one of: 'PbI', 'FAI', 'MAI', 'AI'")
+
+    sg = SlabGenerator(
+        bulk,
+        miller_index=tuple(map(int, miller)),
+        min_slab_size=float(slab_thickness),
+        min_vacuum_size=float(vacuum),
+        center_slab=True,
+    )
+    # Avoid cutting organic cations by discouraging broken C–N, C–H, and N–H bonds.
+    # For perovskite slabs intended for interfacial DFT, broken-molecule terminations
+    # are unphysical and lead to large artifacts in electronic structure.
+    bonds = {
+        ("C", "N"): 1.75,
+        ("C", "H"): 1.25,
+        ("N", "H"): 1.25,
+    }
+    try:
+        slabs = sg.get_slabs(bonds=bonds, max_broken_bonds=0, symmetrize=bool(symmetric))
+    except TypeError:
+        # Older pymatgen may not support these keyword arguments; fall back.
+        slabs = sg.get_slabs()
+    # If the strict "no broken bonds" filter eliminates all candidates, fall back to
+    # unconstrained terminations and rely on the scoring function to reject fragments.
+    if not slabs:
+        try:
+            slabs = sg.get_slabs(symmetrize=bool(symmetric))
+        except TypeError:
+            slabs = sg.get_slabs()
+    if not slabs:
+        raise RuntimeError(f"No slabs generated for miller {miller}")
+
+    def _surface_ok(term_key: str, sig: Dict[str, int]) -> bool:
+        """
+        Return True if a surface signature matches the requested termination.
+
+        PbI termination: exposed Pb/I, no organic atoms in the surface region.
+        FAI termination: exposed FA (C/N/H) + I, no Pb exposure, and no FA fragments.
+        """
+        if term_key == "PBI":
+            # For PbI termination we only require the *outermost layer* to be Pb/I-rich.
+            # Organic atoms can appear slightly below the surface depending on molecular orientation.
+            # (Symmetry enforcement for PbI is handled via layer-elements, not the 4 Å signature.)
+            return (sig["has_pb"] == 1) and (sig["has_i"] == 1)
+        if term_key == "FAI":
+            return (
+                (sig["has_i"] == 1)
+                and (sig["has_pb"] == 0)
+                and (sig.get("a_fragments", 0) == 0)
+                and (sig.get("fa_intact", 0) >= 1)
+            )
+        if term_key == "MAI":
+            return (
+                (sig["has_i"] == 1)
+                and (sig["has_pb"] == 0)
+                and (sig.get("a_fragments", 0) == 0)
+                and (sig.get("ma_intact", 0) >= 1)
+            )
+        # AI (mixed A-site): accept any intact A-site organic cation (MA and/or FA).
+        return (
+            (sig["has_i"] == 1)
+            and (sig["has_pb"] == 0)
+            and (sig.get("a_fragments", 0) == 0)
+            and (sig.get("a_intact", 0) >= 1)
+        )
+
+    def score(slab: Structure) -> Tuple[int, int, int]:
+        n = _interface_normal_unit_from_lattice(slab.lattice)
+        elems = _top_layer_elements(slab, n, layer_thickness=float(top_layer_thickness))
+        has_pb = "Pb" in elems
+        has_i = "I" in elems
+        has_c = "C" in elems
+        has_n = "N" in elems
+        has_cn = has_c or has_n
+        org = _classify_surface_organic_components(slab, n, surface_window=6.0, max_component_thickness=4.5)
+        fa_intact = int(org["fa_intact"])
+        ma_intact = int(org["ma_intact"])
+        a_intact = int(org["a_intact"])
+        a_frag = int(org["a_fragments"])
+
+        # Enforce symmetric slab termination: top and bottom surfaces must both match.
+        if symmetric:
+            if term == "PBI":
+                top_layer = _surface_layer_elements(slab, n, which="top", thickness=1.5)
+                bot_layer = _surface_layer_elements(slab, n, which="bottom", thickness=1.5)
+                top_ok = ("Pb" in top_layer) and ("I" in top_layer) and ("C" not in top_layer) and ("N" not in top_layer)
+                bot_ok = ("Pb" in bot_layer) and ("I" in bot_layer) and ("C" not in bot_layer) and ("N" not in bot_layer)
+                if not (top_ok and bot_ok):
+                    return (-999, -999, -999)
+            else:
+                top_sig = _surface_signature(slab, n, which="top", window=4.0)
+                bot_sig = _surface_signature(slab, n, which="bottom", window=4.0)
+                if not (_surface_ok(term, top_sig) and _surface_ok(term, bot_sig)):
+                    return (-999, -999, -999)
+
+        # Higher is better; tuple provides deterministic tie-breaking.
+        if term == "PBI":
+            # Prefer Pb + I on top, and penalize presence of C/N in the top layer.
+            return (
+                int(has_pb) + int(has_i),   # target species present
+                -int(has_cn),               # avoid organic atoms on PbI termination
+                -a_intact,                  # avoid intact organic cations at the top surface
+                -a_frag,                    # avoid any surface fragments
+            )
+        # A-site iodide termination family (FAI/MAI/AI):
+        # Prefer organic (C/N/H) + I on top, penalize Pb exposure, maximize intact molecules, avoid fragments.
+        if term == "FAI":
+            return (
+                int(has_i) + int(has_c) + int(has_n),
+                fa_intact,
+                -a_frag,
+                -int(has_pb),
+            )
+        if term == "MAI":
+            return (
+                int(has_i) + int(has_c) + int(has_n),
+                ma_intact,
+                -a_frag,
+                -int(has_pb),
+            )
+        # AI (mixed): maximize total intact A-site organics.
+        return (
+            int(has_i) + int(has_c) + int(has_n),
+            a_intact,
+            -a_frag,
+            -int(has_pb),
+        )
+
+    scored = [(score(s), s) for s in slabs]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    if symmetric and scored and scored[0][0] == (-999, -999, -999):
+        raise RuntimeError(
+            f"Could not find a symmetric slab with '{termination}' termination on both surfaces for miller={miller}. "
+            "Try increasing slab_thickness, changing miller index, or disable symmetry only for debugging."
+        )
+    return scored[0][1]
+
+
+def _load_adsorbate_structure(path: str) -> Structure:
+    """
+    Load an adsorbate structure (e.g., C60) as a structure object.
+
+    For typical molecule CIFs, the cell is artificial; we use only the atomic positions.
+    """
+    _require_build_deps()
+    return Structure.from_file(path)
+
+
+def _geometric_center(cart_coords: np.ndarray) -> np.ndarray:
+    """Return the geometric center (average position) of a set of cartesian coords."""
+    if cart_coords.size == 0:
+        return np.zeros(3)
+    return np.mean(cart_coords, axis=0)
+
+def _estimate_molecule_diameter(cart_coords: np.ndarray) -> float:
+    """
+    Estimate a molecule diameter (Å) from cartesian coordinates.
+
+    We approximate the molecule by its maximum distance from the geometric center:
+        diameter ~= 2 * max_i ||r_i - r_center||
+
+    This is a fast O(N) heuristic suitable for fullerenes (C60/C70) and similar molecules.
+    """
+    if cart_coords.size == 0:
+        return 0.0
+    center = _geometric_center(cart_coords)
+    radii = np.linalg.norm(cart_coords - center, axis=1)
+    return float(2.0 * np.max(radii))
+
+
+def _make_inplane_supercell(struct: Structure, nx: int, ny: int) -> Structure:
+    """
+    Make an in-plane supercell (nx, ny, 1) while keeping the slab normal/vacuum unchanged.
+    """
+    _require_build_deps()
+    if nx < 1 or ny < 1:
+        raise ValueError("nx and ny must be >= 1")
+    sc_mat = [[int(nx), 0, 0], [0, int(ny), 0], [0, 0, 1]]
+    return SupercellTransformation(sc_mat).apply_transformation(struct)
+
+
+def _suggest_supercell_xy_for_c60(
+    slab: Structure,
+    c60_diameter: float = 7.1,
+    buffer: float = 3.0,
+    max_atoms: int = 400,
+    c60_atoms: int = 60,
+) -> Tuple[int, int]:
+    """
+    Suggest the smallest (nx, ny) so that the in-plane cell lengths are large enough
+    to avoid excessive C60–C60 interactions across periodic images.
+
+    Heuristic
+    ---------
+    Require a_len >= (c60_diameter + buffer) and b_len >= (c60_diameter + buffer).
+    Then check the approximate atom count constraint:
+        n_total = n_slab * nx * ny + c60_atoms
+
+    Notes
+    -----
+    In plane-wave DFT with 3D periodic boundary conditions, the adsorbate is always
+    periodic in x/y. Making a larger in-plane supercell reduces spurious interactions
+    between periodic images of C60 (unless you intentionally want a dense monolayer).
+    """
+    _require_build_deps()
+    a_len = float(np.linalg.norm(np.asarray(slab.lattice.matrix[0], dtype=float)))
+    b_len = float(np.linalg.norm(np.asarray(slab.lattice.matrix[1], dtype=float)))
+    target = float(c60_diameter + buffer)
+    nx0 = max(1, int(math.ceil(target / max(a_len, 1e-8))))
+    ny0 = max(1, int(math.ceil(target / max(b_len, 1e-8))))
+
+    n_slab = len(slab)
+    n_total = n_slab * nx0 * ny0 + int(c60_atoms)
+    if n_total > int(max_atoms):
+        raise RuntimeError(
+            f"Auto supercell suggests {nx0}x{ny0}, but estimated atoms={n_total} exceeds max_atoms={max_atoms}. "
+            f"Try reducing slab thickness, lowering buffer, or increasing max_atoms."
+        )
+    return nx0, ny0
+
+
+def _minimum_image_distance_xy(struct: Structure) -> float:
+    """
+    Compute the minimum distance between any atom and its periodic images in x/y,
+    approximated by the shortest in-plane lattice vector length.
+
+    This is a conservative indicator for whether the in-plane cell is 'large enough'
+    for isolated adsorbates; it does not replace a full minimum-image distance check.
+    """
+    a_len = float(np.linalg.norm(np.asarray(struct.lattice.matrix[0], dtype=float)))
+    b_len = float(np.linalg.norm(np.asarray(struct.lattice.matrix[1], dtype=float)))
+    return float(min(a_len, b_len))
+
+
+def build_perovskite_c60_adsorbate(
+    base_cif: str,
+    c60_cif: str,
+    miller: Tuple[int, int, int] = (0, 0, 1),
+    slab_thickness: float = 20.0,
+    vacuum: float = 20.0,
+    termination: str = "PbI",
+    adsorbate_distance: float = 3.5,
+    adsorbate_xy: Optional[Tuple[float, float]] = None,
+    supercell_xy: Optional[Tuple[int, int]] = None,
+    auto_supercell: bool = False,
+    c60_diameter: float = 7.1,
+    c60_buffer: float = 3.0,
+    max_atoms: int = 400,
+    symmetric_slab: bool = True,
+) -> Tuple[Structure, Structure]:
+    """
+    Build a perovskite slab and place a single adsorbate molecule above the selected surface.
+
+    Parameters
+    ----------
+    base_cif
+        Path to the perovskite bulk CIF (used to generate the slab).
+    c60_cif
+        Path to the adsorbate CIF (molecule), e.g. C60 or C70.
+    miller
+        Miller index for the slab cut.
+    slab_thickness
+        Minimum slab thickness in Å (passed to SlabGenerator).
+    vacuum
+        Minimum vacuum thickness in Å (passed to SlabGenerator).
+    termination
+        Termination mode for lead-iodide perovskites:
+        - 'PbI': inorganic termination
+        - 'FAI': FA + I termination
+        - 'MAI': MA + I termination
+        - 'AI' : generic A-site organic + I termination (accepts MA and/or FA; useful for mixed-cation perovskites)
+    adsorbate_distance
+        Target distance (Å) between the top-most slab atom and the lowest atom of the adsorbate
+        along the surface normal.
+    adsorbate_xy
+        Optional (fx, fy) fractional coordinates in the slab cell to place the C60 center
+        laterally. If None, defaults to the cell center (0.5, 0.5).
+    supercell_xy
+        Optional (nx, ny) in-plane supercell to enlarge the slab cell before placing the adsorbate.
+        This controls the lateral periodicity of the model.
+    auto_supercell
+        If True, pick the smallest (nx, ny) so that in-plane lengths exceed
+        (c60_diameter + c60_buffer) while keeping atoms <= max_atoms.
+    c60_diameter
+        Approximate adsorbate diameter in Å (used only for auto_supercell heuristics).
+    c60_buffer
+        Extra spacing in Å added on top of c60_diameter for auto_supercell.
+    max_atoms
+        Maximum allowed atom count (used for auto_supercell feasibility checks).
+
+    Returns
+    -------
+    slab
+        The selected-termination slab structure (with vacuum).
+    combined
+        Combined structure (slab + adsorbate) in a single periodic cell.
+    """
+    _require_build_deps()
+    if adsorbate_xy is None:
+        adsorbate_xy = (0.5, 0.5)
+
+    # Delegate to the multi-adsorbate stack builder for consistency.
+    return build_perovskite_adsorbate_stack(
+        base_cif=base_cif,
+        adsorbate_cifs=[c60_cif],
+        layer_gaps=[float(adsorbate_distance)],
+        miller=miller,
+        slab_thickness=slab_thickness,
+        vacuum=vacuum,
+        termination=termination,
+        adsorbate_xy=adsorbate_xy,
+        supercell_xy=supercell_xy,
+        auto_supercell=auto_supercell,
+        adsorbate_diameter=float(c60_diameter),
+        adsorbate_buffer=float(c60_buffer),
+        max_atoms=max_atoms,
+        symmetric_slab=symmetric_slab,
+    )
+
+
+def build_perovskite_adsorbate_stack(
+    base_cif: str,
+    adsorbate_cifs: List[str],
+    layer_gaps: List[float],
+    miller: Tuple[int, int, int] = (0, 0, 1),
+    slab_thickness: float = 20.0,
+    vacuum: float = 20.0,
+    termination: str = "PbI",
+    adsorbate_xy: Optional[Tuple[float, float]] = None,
+    supercell_xy: Optional[Tuple[int, int]] = None,
+    auto_supercell: bool = False,
+    adsorbate_diameter: float = 0.0,
+    adsorbate_buffer: float = 3.0,
+    max_atoms: int = 400,
+    symmetric_slab: bool = True,
+) -> Tuple[Structure, Structure]:
+    """
+    Build a perovskite slab and place multiple adsorbates above it to form a multilayer stack.
+
+    Example: perovskite (bottom) + C70 (middle) + C60 (top), i.e. 3 layers / 2 interfaces.
+
+    Parameters
+    ----------
+    base_cif
+        Perovskite bulk CIF used to generate the slab.
+    adsorbate_cifs
+        List of adsorbate CIF paths in stacking order (bottom -> top), e.g. [C70, C60].
+    layer_gaps
+        List of interlayer gaps in Å. Must have the same length as adsorbate_cifs.
+        Interpretation:
+          layer_gaps[0] = gap between slab top and adsorbate[0] bottom (along surface normal)
+          layer_gaps[i] = gap between adsorbate[i-1] top and adsorbate[i] bottom
+    adsorbate_xy
+        Lateral placement (fx, fy) for the geometric center of each adsorbate (same for all).
+    auto_supercell
+        If True, choose an in-plane supercell to reduce periodic-image interactions using:
+            target_inplane >= (adsorbate_diameter + adsorbate_buffer)
+        If adsorbate_diameter <= 0, the code estimates a diameter from the largest adsorbate.
+    """
+    _require_build_deps()
+    if adsorbate_xy is None:
+        adsorbate_xy = (0.5, 0.5)
+    if not adsorbate_cifs:
+        raise ValueError("adsorbate_cifs must contain at least one CIF path.")
+    if len(layer_gaps) != len(adsorbate_cifs):
+        raise ValueError("layer_gaps must have the same length as adsorbate_cifs.")
+
+    bulk = load_structure(base_cif)
+    slab = _choose_perovskite_termination_slab(
+        bulk=bulk,
+        miller=miller,
+        slab_thickness=slab_thickness,
+        vacuum=vacuum,
+        termination=termination,
+        symmetric=bool(symmetric_slab),
+    )
+
+    # Optional in-plane supercelling to control the lateral periodicity.
+    if auto_supercell:
+        # If user did not specify a diameter, estimate from the largest adsorbate.
+        dia = float(adsorbate_diameter)
+        if dia <= 1e-6:
+            dias: List[float] = []
+            for p in adsorbate_cifs:
+                mol = _load_adsorbate_structure(p)
+                dias.append(_estimate_molecule_diameter(np.asarray(mol.cart_coords, dtype=float)))
+            dia = float(max(dias)) if dias else 0.0
+            print(f"Estimated adsorbate diameter (max over stack): {dia:.2f} Å")
+
+        # Crude estimate of added atoms from all adsorbates.
+        ads_atoms = 0
+        for p in adsorbate_cifs:
+            ads_atoms += len(_load_adsorbate_structure(p))
+        nx, ny = _suggest_supercell_xy_for_c60(
+            slab=slab,
+            c60_diameter=float(dia),
+            buffer=float(adsorbate_buffer),
+            max_atoms=int(max_atoms),
+            c60_atoms=int(ads_atoms),
+        )
+        print(f"Auto supercell selected: {nx}x{ny} (target >= {dia + adsorbate_buffer:.2f} Å in-plane)")
+        slab = _make_inplane_supercell(slab, nx, ny)
+    elif supercell_xy is not None:
+        nx, ny = int(supercell_xy[0]), int(supercell_xy[1])
+        print(f"Using user supercell: {nx}x{ny}")
+        slab = _make_inplane_supercell(slab, nx, ny)
+
+    # Surface normal (after supercell) and slab top reference.
+    n = _interface_normal_unit_from_lattice(slab.lattice)
+    top_elems = _top_layer_elements(slab, n, layer_thickness=4.0)
+    print(f"Selected slab top-layer elements: {sorted(top_elems)} (requested termination: {termination})")
+    print(f"In-plane minimum lattice length (a/b): {_minimum_image_distance_xy(slab):.2f} Å (periodic in x/y)")
+    slab_proj = np.dot(np.asarray(slab.cart_coords, dtype=float), n) if len(slab) else np.array([0.0])
+    current_top = float(np.max(slab_proj))
+
+    # Place adsorbates sequentially along the surface normal.
+    placed_adsorbates_cart: List[np.ndarray] = []
+    for idx, (ads_path, gap) in enumerate(zip(adsorbate_cifs, layer_gaps)):
+        ads = _load_adsorbate_structure(ads_path)
+        ads_cart = np.asarray(ads.cart_coords, dtype=float)
+        ads_center = _geometric_center(ads_cart)
+        ads_cart_centered = ads_cart - ads_center
+
+        # Lateral placement by geometric center.
+        delta_xy_cart = slab.lattice.get_cartesian_coords(
+            np.array([float(adsorbate_xy[0]), float(adsorbate_xy[1]), 0.0], dtype=float)
+        )
+        ads_cart_positioned = ads_cart_centered + delta_xy_cart
+
+        # Lift so that the minimum projection sits 'gap' above the current top.
+        ads_proj = np.dot(ads_cart_positioned, n)
+        ads_min = float(np.min(ads_proj)) if ads_proj.size else 0.0
+        lift = (current_top + float(gap)) - ads_min
+        ads_cart_positioned = ads_cart_positioned + n * lift
+
+        # Update current top using this adsorbate max.
+        ads_proj2 = np.dot(ads_cart_positioned, n)
+        current_top = float(np.max(ads_proj2)) if ads_proj2.size else current_top
+        placed_adsorbates_cart.append(ads_cart_positioned)
+        print(f"Placed adsorbate {idx+1}/{len(adsorbate_cifs)}: {Path(ads_path).name} | gap={gap:.2f} Å")
+
+    # Ensure the cell is tall enough so the top-most adsorbate does not cross the periodic boundary.
+    c_len = float(np.linalg.norm(np.array(slab.lattice.matrix[2], dtype=float)))
+    clearance = c_len - float(current_top)
+    if clearance < 5.0:
+        extra = 5.0 - clearance + 2.0  # small buffer
+        new_lat = np.array(slab.lattice.matrix, dtype=float)
+        new_lat[2] = new_lat[2] + n * extra
+        new_lattice = Lattice(new_lat)
+        slab_cart = np.asarray(slab.cart_coords, dtype=float)
+        slab_frac = [new_lattice.get_fractional_coords(v) for v in slab_cart]
+        slab = Structure(new_lattice, slab.species, slab_frac, coords_are_cartesian=False, to_unit_cell=True)
+        print(f"Extended vacuum by {extra:.2f} Å to keep clearance above top layer.")
+
+    # Merge slab + all adsorbates into a combined structure in the slab lattice.
+    combined = slab.copy()
+    lat = combined.lattice
+    for ads_path, ads_cart_positioned in zip(adsorbate_cifs, placed_adsorbates_cart):
+        ads = _load_adsorbate_structure(ads_path)
+        for sp, cart in zip(ads.species, ads_cart_positioned):
+            frac = lat.get_fractional_coords(cart)
+            combined.append(sp, frac, coords_are_cartesian=False)
+    combined = Structure(lat, combined.species, combined.frac_coords, coords_are_cartesian=False, to_unit_cell=True)
+    combined = combined.get_sorted_structure()
+    return slab, combined
+
+    bulk = load_structure(base_cif)
+    slab = _choose_perovskite_termination_slab(
+        bulk=bulk,
+        miller=miller,
+        slab_thickness=slab_thickness,
+        vacuum=vacuum,
+        termination=termination,
+        symmetric=bool(symmetric_slab),
+    )
+
+    # If symmetry is disabled (debug mode), keep the adsorption surface preference by flipping.
+    if not symmetric_slab:
+        n0 = _interface_normal_unit_from_lattice(slab.lattice)
+        top_sig = _surface_signature(slab, n0, which="top", window=4.0)
+        bot_sig = _surface_signature(slab, n0, which="bottom", window=4.0)
+
+        term_up = termination.strip().upper()
+        if term_up == "FAI":
+            def _score_fai(sig: Dict[str, int]) -> float:
+                return (
+                    3.0 * sig["has_i"]
+                    + 1.0 * sig["has_c"]
+                    + 1.0 * sig["has_n"]
+                    + 3.0 * sig["fa_intact"]
+                    - 6.0 * sig["fa_fragments"]
+                    - 2.0 * sig["has_pb"]
+                )
+            if _score_fai(bot_sig) > _score_fai(top_sig) + 1e-6:
+                slab = _flip_structure_along_normal(slab, n0)
+                print("Flipped slab to expose FAI termination on the top surface.")
+        else:
+            def _score_pbi(sig: Dict[str, int]) -> float:
+                return (
+                    2.0 * sig["has_pb"]
+                    + 2.0 * sig["has_i"]
+                    - 2.0 * sig["has_c"]
+                    - 2.0 * sig["has_n"]
+                    - 3.0 * sig["fa_intact"]
+                    - 3.0 * sig["fa_fragments"]
+                )
+            if _score_pbi(bot_sig) > _score_pbi(top_sig) + 1e-6:
+                slab = _flip_structure_along_normal(slab, n0)
+                print("Flipped slab to expose PbI termination on the top surface.")
+
+    # Optional in-plane supercelling to control the lateral periodicity.
+    if auto_supercell:
+        nx, ny = _suggest_supercell_xy_for_c60(
+            slab=slab,
+            c60_diameter=float(c60_diameter),
+            buffer=float(c60_buffer),
+            max_atoms=int(max_atoms),
+            c60_atoms=60,
+        )
+        print(f"Auto supercell selected: {nx}x{ny} (target >= {c60_diameter + c60_buffer:.2f} Å in-plane)")
+        slab = _make_inplane_supercell(slab, nx, ny)
+    elif supercell_xy is not None:
+        nx, ny = int(supercell_xy[0]), int(supercell_xy[1])
+        print(f"Using user supercell: {nx}x{ny}")
+        slab = _make_inplane_supercell(slab, nx, ny)
+
+    # Surface normal and slab top reference (cartesian projection).
+    n = _interface_normal_unit_from_lattice(slab.lattice)
+    # Use a thicker "top region" to reflect A-site cations sitting above the X layer
+    # (as commonly shown in MAI/FAI-terminated surface schematics).
+    top_elems = _top_layer_elements(slab, n, layer_thickness=4.0)
+    print(f"Selected slab top-layer elements: {sorted(top_elems)} (requested termination: {termination})")
+    print(f"In-plane minimum lattice length (a/b): {_minimum_image_distance_xy(slab):.2f} Å (periodic in x/y)")
+    slab_proj = np.dot(np.asarray(slab.cart_coords, dtype=float), n) if len(slab) else np.array([0.0])
+    slab_top = float(np.max(slab_proj))
+
+    # Load adsorbate and shift it to match requested geometry.
+    c60 = _load_adsorbate_structure(c60_cif)
+    c60_cart = np.asarray(c60.cart_coords, dtype=float)
+    c60_center = _geometric_center(c60_cart)
+    c60_cart_centered = c60_cart - c60_center
+
+    # First, place C60 laterally by setting its geometric center to the desired (fx, fy) in the slab cell.
+    # Using cartesian translation from fractional coordinates handles non-orthogonal a/b lattices correctly.
+    delta_xy_cart = slab.lattice.get_cartesian_coords(
+        np.array([float(adsorbate_xy[0]), float(adsorbate_xy[1]), 0.0], dtype=float)
+    )
+    c60_cart_positioned = c60_cart_centered + delta_xy_cart
+
+    # Then, lift C60 above the slab to enforce the requested minimum distance along the normal.
+    c60_proj = np.dot(c60_cart_positioned, n)
+    c60_min = float(np.min(c60_proj)) if c60_proj.size else 0.0
+    lift = (slab_top + float(adsorbate_distance)) - c60_min
+    c60_cart_positioned = c60_cart_positioned + n * lift
+
+    # Ensure the cell is tall enough so the adsorbate does not cross the periodic boundary.
+    # If needed, extend the c vector (keeping a and b fixed) to add extra vacuum above.
+    c_len = float(np.linalg.norm(np.array(slab.lattice.matrix[2], dtype=float)))
+    max_proj_all = float(np.max(np.concatenate([slab_proj, np.dot(c60_cart_positioned, n)])))
+    # Keep at least 5 Å clearance to the top boundary.
+    clearance = c_len - max_proj_all
+    if clearance < 5.0:
+        extra = 5.0 - clearance + 2.0  # small buffer
+        new_lat = np.array(slab.lattice.matrix, dtype=float)
+        new_lat[2] = new_lat[2] + n * extra
+        new_lattice = Lattice(new_lat)
+        # Rebuild slab in new lattice (preserve cart coords).
+        slab_cart = np.asarray(slab.cart_coords, dtype=float)
+        slab_frac = [new_lattice.get_fractional_coords(v) for v in slab_cart]
+        slab = Structure(new_lattice, slab.species, slab_frac, coords_are_cartesian=False, to_unit_cell=True)
+        # Update C60 in the new lattice coordinates.
+        c60_cart_positioned = c60_cart_positioned  # unchanged in cart space
+
+    # Merge slab + C60 into a combined structure in the slab lattice.
+    combined = slab.copy()
+    lat = combined.lattice
+    for sp, cart in zip(c60.species, c60_cart_positioned):
+        frac = lat.get_fractional_coords(cart)
+        combined.append(sp, frac, coords_are_cartesian=False)
+    # Wrap to the unit cell for VASP friendliness, then sort for stable output.
+    combined = Structure(lat, combined.species, combined.frac_coords, coords_are_cartesian=False, to_unit_cell=True)
+    combined = combined.get_sorted_structure()
+    return slab, combined
 
 def search_matches(
     structA,
@@ -1609,6 +2491,102 @@ if __name__ == "__main__":
     p.add_argument("--strain_target", dest="strain_target", default="A", choices=["A","B","both"], help="Which material to strain: A, B, or both (split)")
     p.add_argument("--use_builder_interface", dest="use_builder", action="store_true", help="Use CoherentInterfaceBuilder.get_interfaces for ordered interface (recommended)")
     p.add_argument("--max_atoms", dest="max_atoms", type=int, default=400, help="Maximum number of atoms in final structure (default: 400)")
+    # Adsorbate-mode inputs (H5PbCI3N2 slab + C60)
+    p.add_argument(
+        "--adsorbate_mode",
+        dest="adsorbate_mode",
+        action="store_true",
+        help="Build a H5PbCI3N2 slab and place C60 above the surface (DFT-ready POSCAR).",
+    )
+    p.add_argument(
+        "--base_cif",
+        dest="base_cif",
+        default="structures/perovskites/H5PbCI3N2.cif",
+        help="Perovskite bulk CIF used to generate the slab (default: structures/perovskites/H5PbCI3N2.cif).",
+    )
+    p.add_argument(
+        "--adsorbate_cif",
+        dest="adsorbate_cif",
+        default="structures/etl/C60-Ih.cif",
+        help="Adsorbate CIF (default: structures/etl/C60-Ih.cif).",
+    )
+    p.add_argument(
+        "--adsorbates",
+        dest="adsorbates",
+        default=None,
+        help="Comma-separated adsorbate CIFs for multilayer stacking (bottom->top), e.g. 'structures/etl/C70-D5h.cif,structures/etl/C60-Ih.cif'.",
+    )
+    p.add_argument(
+        "--layer_gaps",
+        dest="layer_gaps",
+        default=None,
+        help="Comma-separated interlayer gaps in Å. Must match --adsorbates length. Example for 3 layers (slab/C70/C60): '2,2'.",
+    )
+    p.add_argument(
+        "--termination",
+        dest="termination",
+        default="PbI",
+        choices=["PbI", "FAI", "MAI", "AI"],
+        help="Perovskite termination for adsorbate mode: PbI / FAI / MAI / AI (AI = mixed A-site iodide).",
+    )
+    p.add_argument(
+        "--miller",
+        dest="miller",
+        default="0,0,1",
+        help="Miller index for the perovskite slab cut, e.g. 0,0,1 (default).",
+    )
+    p.add_argument(
+        "--slab_thickness",
+        dest="slab_thickness",
+        type=float,
+        default=20.0,
+        help="Minimum slab thickness in Å (default: 20.0).",
+    )
+    p.add_argument(
+        "--adsorbate_distance",
+        dest="adsorbate_distance",
+        type=float,
+        default=3.5,
+        help="Distance (Å) between slab top-most atom and the lowest C atom in C60 along surface normal.",
+    )
+    p.add_argument(
+        "--adsorbate_xy",
+        dest="adsorbate_xy",
+        default=None,
+        help="Optional lateral placement of C60 center as fractional 'fx,fy' in the slab cell (default: 0.5,0.5).",
+    )
+    p.add_argument(
+        "--supercell_xy",
+        dest="supercell_xy",
+        default=None,
+        help="Optional in-plane supercell for the perovskite slab as 'nx,ny' (e.g., 2,2).",
+    )
+    p.add_argument(
+        "--auto_supercell",
+        dest="auto_supercell",
+        action="store_true",
+        help="Automatically choose a small in-plane supercell to reduce C60 periodic-image interactions.",
+    )
+    p.add_argument(
+        "--no_symmetric_slab",
+        dest="no_symmetric_slab",
+        action="store_true",
+        help="Disable symmetric slab requirement (top and bottom termination may differ). Not recommended.",
+    )
+    p.add_argument(
+        "--c60_diameter",
+        dest="c60_diameter",
+        type=float,
+        default=7.1,
+        help="Approximate C60 diameter in Å (used only when --auto_supercell is set).",
+    )
+    p.add_argument(
+        "--c60_buffer",
+        dest="c60_buffer",
+        type=float,
+        default=3.0,
+        help="Extra spacing added to C60 diameter in Å for --auto_supercell (default: 3.0).",
+    )
     args = p.parse_args()
 
     if args.split_layers:
@@ -1620,6 +2598,113 @@ if __name__ == "__main__":
             layer1_elements=args.layer1_elements,
             layer2_elements=args.layer2_elements,
         )
+        raise SystemExit(0)
+
+    if args.adsorbate_mode:
+        _require_build_deps()
+        miller = tuple(map(int, args.miller.split(",")))
+        xy = None
+        if args.adsorbate_xy:
+            parts = [p.strip() for p in str(args.adsorbate_xy).split(",") if p.strip()]
+            if len(parts) != 2:
+                raise SystemExit("Error: --adsorbate_xy must be 'fx,fy' (e.g., 0.5,0.5).")
+            xy = (float(parts[0]), float(parts[1]))
+
+        sc_xy = None
+        if args.supercell_xy:
+            parts = [p.strip() for p in str(args.supercell_xy).split(",") if p.strip()]
+            if len(parts) != 2:
+                raise SystemExit("Error: --supercell_xy must be 'nx,ny' (e.g., 2,2).")
+            sc_xy = (int(parts[0]), int(parts[1]))
+
+        # Multilayer: if --adsorbates is provided, build a stacked adsorbate model.
+        if args.adsorbates:
+            ads_list = [p.strip() for p in str(args.adsorbates).split(",") if p.strip()]
+            if not ads_list:
+                raise SystemExit("Error: --adsorbates is provided but empty.")
+            if not args.layer_gaps:
+                raise SystemExit("Error: --adsorbates requires --layer_gaps (e.g., '2,2').")
+            gap_list = [g.strip() for g in str(args.layer_gaps).split(",") if g.strip()]
+            if len(gap_list) != len(ads_list):
+                raise SystemExit("Error: --layer_gaps length must match --adsorbates length.")
+            gaps = [float(g) for g in gap_list]
+
+            slab, combined = build_perovskite_adsorbate_stack(
+                base_cif=args.base_cif,
+                adsorbate_cifs=ads_list,
+                layer_gaps=gaps,
+                miller=miller,
+                slab_thickness=float(args.slab_thickness),
+                vacuum=float(args.vac),
+                termination=str(args.termination),
+                adsorbate_xy=xy,
+                supercell_xy=sc_xy,
+                auto_supercell=bool(args.auto_supercell),
+                adsorbate_diameter=float(args.c60_diameter),
+                adsorbate_buffer=float(args.c60_buffer),
+                max_atoms=int(args.max_atoms),
+                symmetric_slab=not bool(args.no_symmetric_slab),
+            )
+        else:
+            slab, combined = build_perovskite_c60_adsorbate(
+                base_cif=args.base_cif,
+                c60_cif=args.adsorbate_cif,
+                miller=miller,
+                slab_thickness=float(args.slab_thickness),
+                vacuum=float(args.vac),
+                termination=str(args.termination),
+                adsorbate_distance=float(args.adsorbate_distance),
+                adsorbate_xy=xy,
+                supercell_xy=sc_xy,
+                auto_supercell=bool(args.auto_supercell),
+                c60_diameter=float(args.c60_diameter),
+                c60_buffer=float(args.c60_buffer),
+                max_atoms=int(args.max_atoms),
+                symmetric_slab=not bool(args.no_symmetric_slab),
+            )
+
+        base_label = _safe_structure_label(args.base_cif)
+        if args.adsorbates:
+            ads_label = "@".join([_safe_structure_label(p) for p in str(args.adsorbates).split(",") if p.strip()])
+        else:
+            ads_label = _safe_structure_label(args.adsorbate_cif)
+        term_label = str(args.termination)
+        out_dir = Path("structures") / "heterojunctions"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        sc_tag = ""
+        if args.auto_supercell:
+            sc_tag = "_autoSC"
+        elif sc_xy is not None:
+            sc_tag = f"_{sc_xy[0]}x{sc_xy[1]}"
+        if args.adsorbates and args.layer_gaps:
+            gap_tag = "-".join([f"{float(g):.2f}" for g in str(args.layer_gaps).split(",") if g.strip()])
+            base_name = f"{base_label}@{ads_label}_{term_label}{sc_tag}_g{gap_tag}"
+        else:
+            base_name = f"{base_label}@{ads_label}_{term_label}{sc_tag}_d{args.adsorbate_distance:.2f}"
+
+        slab_path = out_dir / f"{base_name}_slab.vasp"
+        combined_path = out_dir / f"{base_name}.vasp"
+
+        Poscar(
+            _reorder_structure_for_poscar(slab),
+            comment=f"{base_label} slab ({term_label} termination); vacuum={args.vac:.2f} Å",
+            sort_structure=False,
+        ).write_file(slab_path)
+        Poscar(
+            _reorder_structure_for_poscar(combined),
+            comment=(
+                f"{base_label} slab + {ads_label}; termination={term_label}; "
+                + (
+                    f"gaps={gap_tag} Å"
+                    if (args.adsorbates and args.layer_gaps)
+                    else f"distance={args.adsorbate_distance:.2f} Å"
+                )
+            ),
+            sort_structure=False,
+        ).write_file(combined_path)
+        print("Wrote adsorbate POSCARs:")
+        print(" - Slab   :", slab_path)
+        print(" - Combined:", combined_path)
         raise SystemExit(0)
 
     if not args.afile or not args.bfile:

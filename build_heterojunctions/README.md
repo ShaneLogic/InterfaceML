@@ -77,6 +77,89 @@ The script generates three POSCAR files (base name is `<A>@<B>` derived from fil
 2. `<A>@<B>_top_strained.vasp` - Top slab (film)
 3. `<A>@<B>.vasp` - Combined heterojunction structure (input for Step 2)
 
+## 1b) Build a perovskite/C60 interface model (adsorbate mode)
+
+This mode targets **FAPbI3/C60**-like interface modeling (C60 as ETL) for subsequent DFT calculations.
+It generates a perovskite **slab** with a chosen surface termination and places a **C60 molecule** above
+the top surface with a user-controlled separation.
+
+### Important note on periodicity (DFT boundary conditions)
+
+Plane-wave DFT uses **3D periodic boundary conditions**. That means the C60 molecule is always periodic
+in the in-plane directions (x/y). You control whether this represents:
+
+- a **dense periodic C60 overlayer** (small in-plane cell), or
+- an **isolated C60 adsorption** model (larger in-plane supercell to reduce image–image interactions).
+
+Use `--auto_supercell` or `--supercell_xy` to make the in-plane cell larger and avoid unphysical C60–C60
+overlap across periodic images.
+
+### Basic usage (recommended)
+
+```bash
+python build_heterojunctions/interface_builder.py \
+  --adsorbate_mode \
+  --base_cif structures/perovskites/H5PbCI3N2.cif \
+  --adsorbate_cif structures/etl/C60-Ih.cif \
+  --termination PbI \
+  --miller 0,0,1 \
+  --slab_thickness 18 \
+  --vacuum 20 \
+  --adsorbate_distance 3.5 \
+  --auto_supercell \
+  --max_atoms 400
+```
+
+### Multi-adsorbate stack (3 layers / 2 interfaces)
+
+To build a **three-layer** model (perovskite bottom / C70 middle / C60 top) with **two interfaces**
+and a fixed **2 Å gap between neighboring layers**, use `--adsorbates` + `--layer_gaps`:
+
+```bash
+python build_heterojunctions/interface_builder.py \
+  --adsorbate_mode \
+  --base_cif structures/perovskites/H5PbCI3N2.cif \
+  --termination AI \
+  --adsorbates "structures/etl/C70-D5h.cif,structures/etl/C60-Ih.cif" \
+  --layer_gaps "2,2" \
+  --miller 0,0,1 \
+  --slab_thickness 18 \
+  --vacuum 20 \
+  --auto_supercell \
+  --max_atoms 500
+```
+
+**Interpretation of `--layer_gaps`:**
+
+- `layer_gaps[0]`: gap between perovskite slab top and C70 bottom (along the surface normal)
+- `layer_gaps[1]`: gap between C70 top and C60 bottom
+
+### Key parameters
+
+- `--termination`: Choose perovskite termination (lead-iodide perovskites):
+  - `PbI`: inorganic termination (Pb/I-rich outermost layer)
+  - `FAI`: FA + I termination
+  - `MAI`: MA + I termination
+  - `AI`: generic A-site organic + I termination (accepts MA and/or FA; recommended for mixed-cation perovskites such as MA0.5FA0.5PbI3)
+- **Default behavior**: the slab is built as a **symmetric slab**, i.e. the **top and bottom surfaces have the same termination** (recommended for slab DFT).
+- `--no_symmetric_slab`: Disable symmetric-slab enforcement (top/bottom terminations may differ). **Not recommended**; only useful for debugging.
+- `--adsorbate_distance`: Target distance (Å) between **top-most slab atom** and the **lowest C atom in C60**
+  along the surface normal
+- `--adsorbates`: Comma-separated adsorbate CIFs for multilayer stacking (bottom->top)
+- `--layer_gaps`: Comma-separated gaps in Å, must match `--adsorbates` length
+- `--auto_supercell`: Automatically choose a small in-plane supercell to reduce C60 periodic-image interactions
+  (heuristic target: `c60_diameter + c60_buffer`)
+- `--supercell_xy nx,ny`: Explicitly set the in-plane supercell (e.g., `2,2` or `3,3`)
+- `--c60_diameter`, `--c60_buffer`: Heuristic controls for `--auto_supercell` (defaults: 7.1 Å and 3.0 Å). For other fullerenes (e.g., C70), set `--c60_diameter` accordingly.
+- `--adsorbate_xy fx,fy`: Optional lateral placement of the C60 geometric center in fractional coordinates
+
+### Outputs
+
+Two POSCAR files are written to `structures/heterojunctions/`:
+
+1. `<base>@<ads>_<termination>_<supercell>_d<distance>_slab.vasp` - the slab only
+2. `<base>@<ads>_<termination>_<supercell>_d<distance>.vasp` - slab + C60 combined (DFT input)
+
 ## 2) Add selective dynamics (`fix_interface_layers.py`)
 
 ### Basic usage
