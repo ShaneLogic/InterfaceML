@@ -5,6 +5,7 @@ This folder contains utilities to build heterojunction interfaces and prepare in
 ## Contents
 
 - [Quick start (recommended workflow)](#quick-start-recommended-workflow)
+- [0) Enlarge a CIF unit cell (add vacuum) (`expand_cif_cell.py`)](#0-enlarge-a-cif-unit-cell-add-vacuum-expand_cif_cellpy)
 - [1) Build heterojunction interface (`interface_builder.py`)](#1-build-heterojunction-interface-interface_builderpy)
 - [2) Add selective dynamics (`fix_interface_layers.py`)](#2-add-selective-dynamics-fix_interface_layerspy)
 - [3) Split an existing heterojunction into layers (for differential charge)](#3-split-an-existing-heterojunction-into-layers-for-differential-charge)
@@ -32,6 +33,38 @@ python build_heterojunctions/fix_interface_layers.py \
   -n 2 \
   -t 2.0
 ```
+
+## 0) Enlarge a CIF unit cell (add vacuum) (`expand_cif_cell.py`)
+
+This helper script enlarges the **unit cell** to a target size (e.g., \(a=b=c=20\) Å) while keeping the
+**molecular geometry** unchanged. This is useful when you want to add vacuum around an isolated molecule
+(C60/C70, etc.) before building adsorption or interface models.
+
+### Recommended usage (keep the structure centered)
+
+```bash
+# Enlarge the cell to 20 Å and keep the molecule centered in the new unit cell.
+# --wrap keeps fractional coordinates within [0, 1) for nicer visualization.
+python build_heterojunctions/expand_cif_cell.py \
+  structures/etl/C60-Ih.cif \
+  structures/etl/C70-D5h.cif \
+  --target 20 \
+  --center \
+  --wrap \
+  --suffix _cell20
+```
+
+This will write:
+
+- `structures/etl/C60-Ih_cell20.cif`
+- `structures/etl/C70-D5h_cell20.cif`
+
+### Notes
+
+- `--target`: Sets the new cell length (Å). The script sets \(a=b=c=\) target and keeps the original angles.
+- `--center`: Translates the structure so its **geometric center** is at the **new cell center**.
+- `--wrap`: Wraps fractional coordinates back to \([0, 1)\) after transforming/translating.
+- If your shell complains about parentheses in paths (e.g. zsh), wrap paths in quotes.
 
 ## 1) Build heterojunction interface (`interface_builder.py`)
 
@@ -179,6 +212,63 @@ python build_heterojunctions/fix_interface_layers.py \
 - `-n, --n_layers`: Number of layers to relax on each side of interface (default: 1)
 - `-t, --thickness`: Layer thickness threshold in Å (default: 2.0)
 - `-m, --method`: Interface identification method: `density_gap`, `median`, or `max_gap` (default: `density_gap`)
+
+### Mode B: split a stacked heterostructure into layers and fix selected layer(s)
+
+For stacked models with multiple interfaces (e.g. perovskite/C70/C60), it is often convenient to
+**split the structure into (n_interfaces + 1) layers** and then fix one or more complete layers.
+
+Rule:
+- 1 interface  → 2 layers
+- 2 interfaces → 3 layers
+- ...
+
+Example (2 interfaces → 3 layers; fix the bottom layer):
+
+```bash
+python build_heterojunctions/fix_interface_layers.py your_stacked_model.vasp \
+  --by_layers \
+  --n_interfaces 2 \
+  --fixed_layers 1 \
+  --print_only
+```
+
+Notes:
+- `--fixed_layers` uses **1-based layer numbering** (Layer 1 = bottom).
+- The script prints `FIXED_ATOMS LIST: ...` to the terminal.
+- Layer detection uses the **largest gaps along the interface normal** (from `a x b`).
+- The input can be `POSCAR/VASP/CIF` as well as `CP2K .xyz` (the `.xyz` should include `Tv_1/Tv_2/Tv_3` in the comment line for correct lattice handling).
+
+### Mode C: fix the bottom N z-layers (direct height clustering; terminal output only)
+
+If you simply want to **fix the bottom N atomic layers** (from bottom to top) without specifying the
+number of interfaces, use `--by_z_layers`. This mode prints a CP2K-style `FIXED_ATOMS LIST` and exits.
+
+Example (fix bottom 4 layers):
+
+```bash
+python build_heterojunctions/fix_interface_layers.py structures/heterojunctions/fapbi3-1@c70-1@c60-1_AI_g2.xyz \
+  --by_z_layers \
+  --n_fix_layers 4 \
+  --tol 0.4
+```
+
+Notes:
+- `--tol` is the layer clustering tolerance in Å; if omitted, it is auto-estimated.
+- For CP2K `.xyz`, include `Tv_1/Tv_2/Tv_3` in the comment line whenever possible.
+- By default, the script ensures **whole organic molecules** (e.g., MA/FA) are not cut by the layer boundary:
+  if any atom of a molecule is selected in the fixed region, **all atoms of that molecule** are included.
+  Disable this with `--no_include_molecules` if you really want strict z-only selection.
+
+### Engineering note: shared helper modules
+
+To keep the CLI behavior stable while improving maintainability, common logic is factored into:
+
+- `build_heterojunctions/_utils_xyz.py`: CP2K XYZ parsing (Tv_ vectors)
+- `build_heterojunctions/_utils_structures.py`: structure loading (`POSCAR/CIF/XYZ`)
+- `build_heterojunctions/_utils_layering.py`: interface normal, periodic unwrapping, gap-based splitting, z-layer clustering, whole-molecule inclusion
+
+All CLI tools keep their original command-line interface; the refactor is internal-only.
 
 ### Selective dynamics format (in output POSCAR)
 
