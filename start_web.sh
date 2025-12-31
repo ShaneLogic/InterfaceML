@@ -47,3 +47,4 @@ if [ "$PORT_FOUND" = false ]; then
     echo "   python interfaceml/web/app.py --port 9000"
     exit 1
 fi
+
