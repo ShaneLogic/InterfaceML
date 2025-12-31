@@ -27,16 +27,30 @@ from pymatgen.io.vasp import Poscar
 # Shared utilities (engineering refactor):
 # - Keep the CLI behavior unchanged
 # - Delegate reusable logic to helper modules
-from _utils_structures import load_structure_any as _load_structure_any
-from _utils_layering import (
-    interface_normal_unit as _interface_normal_unit,
-    unwrap_periodic_1d as _unwrap_periodic_1d_shared,
-    split_stack_layers as _split_stack_layers,
-    layer_indices_to_string as _layer_indices_to_string,
-    auto_layer_tol as _auto_layer_tol_shared,
-    split_layers_by_z as _split_layers_by_z_shared,
-    include_whole_molecules as _include_whole_molecules_shared,
-)
+try:
+    # When executed as a module: `python -m build_heterojunctions.fix_interface_layers ...`
+    from ._utils_structures import load_structure_any as _load_structure_any
+    from ._utils_layering import (
+        interface_normal_unit as _interface_normal_unit,
+        unwrap_periodic_1d as _unwrap_periodic_1d_shared,
+        split_stack_layers as _split_stack_layers,
+        layer_indices_to_string as _layer_indices_to_string,
+        auto_layer_tol as _auto_layer_tol_shared,
+        split_layers_by_z as _split_layers_by_z_shared,
+        include_whole_molecules as _include_whole_molecules_shared,
+    )
+except ImportError:
+    # When executed as a script: `python build_heterojunctions/fix_interface_layers.py ...`
+    from _utils_structures import load_structure_any as _load_structure_any
+    from _utils_layering import (
+        interface_normal_unit as _interface_normal_unit,
+        unwrap_periodic_1d as _unwrap_periodic_1d_shared,
+        split_stack_layers as _split_stack_layers,
+        layer_indices_to_string as _layer_indices_to_string,
+        auto_layer_tol as _auto_layer_tol_shared,
+        split_layers_by_z as _split_layers_by_z_shared,
+        include_whole_molecules as _include_whole_molecules_shared,
+    )
 
 
 _TV_RE = re.compile(

@@ -12,7 +12,12 @@ from typing import Optional
 import numpy as np
 from pymatgen.core import Lattice, Structure
 
-from _utils_xyz import read_cp2k_xyz_last_frame
+try:
+    # When executed as a module: `python -m build_heterojunctions.<script>`
+    from ._utils_xyz import read_cp2k_xyz_last_frame
+except ImportError:
+    # When executed as a script: `python build_heterojunctions/<script>.py`
+    from _utils_xyz import read_cp2k_xyz_last_frame
 
 
 def load_structure_any(path_str: str) -> Structure:

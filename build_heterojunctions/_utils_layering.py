@@ -13,7 +13,12 @@ from typing import Dict, List, Set, Tuple, Optional
 import numpy as np
 from pymatgen.core import Structure
 
-from _utils_structures import element_symbols
+try:
+    # When executed as a module: `python -m build_heterojunctions.<script>`
+    from ._utils_structures import element_symbols
+except ImportError:
+    # When executed as a script: `python build_heterojunctions/<script>.py`
+    from _utils_structures import element_symbols
 
 
 def interface_normal_unit(structure: Structure) -> np.ndarray:
