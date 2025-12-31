@@ -252,11 +252,17 @@ def download_file(filename):
 
 def main():
     """Main entry point for the web application."""
+    import argparse
+    parser = argparse.ArgumentParser(description="InterfaceML Web Server")
+    parser.add_argument('--port', type=int, default=5000, help='Port to run on (default: 5000)')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+    args = parser.parse_args()
+    
     print("Starting InterfaceML Web Server...")
     print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
     print(f"Core modules available: {CORE_AVAILABLE}")
-    print("\nOpen your browser and navigate to: http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print(f"\nOpen your browser and navigate to: http://localhost:{args.port}")
+    app.run(debug=True, host=args.host, port=args.port)
 
 
 if __name__ == '__main__':
