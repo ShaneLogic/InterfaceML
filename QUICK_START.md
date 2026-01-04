@@ -23,9 +23,6 @@ pip install -e .
 # Test Python import
 python -c "from interfaceml.core import io, layering; print('✓ InterfaceML ready!')"
 
-# Run basic tests
-python tests/test_basic.py
-
 # Check CLI tools
 python build_heterojunctions/interface_builder.py --help
 ```
@@ -212,7 +209,6 @@ README.md                           ← Start here!
 ├── QUICK_START.md                 ← You are here
 ├── docs/GETTING_STARTED.md         ← Detailed tutorial
 ├── build_heterojunctions/README.md ← Technical reference
-├── PROJECT_STRUCTURE.md            ← Architecture overview
 └── examples/example_workflow.sh    ← Complete example
 ```
 

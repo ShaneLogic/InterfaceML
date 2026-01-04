@@ -700,13 +700,13 @@ def main():
                 print_only=bool(args.print_only),
             )
         else:
-            add_selective_dynamics(
-                args.input_file,
-                args.output_file,
-                n_layers_per_side=args.n_layers,
-                layer_thickness=args.layer_thickness,
-                interface_method=args.interface_method
-            )
+        add_selective_dynamics(
+            args.input_file,
+            args.output_file,
+            n_layers_per_side=args.n_layers,
+            layer_thickness=args.layer_thickness,
+            interface_method=args.interface_method
+        )
     except Exception as e:
         print(f"Error: {e}")
         import traceback

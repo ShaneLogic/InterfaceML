@@ -281,10 +281,9 @@ if __name__ == "__main__":
 
 ### 2. Integration Test
 
-Add to `run_all_tests.sh`:
+Run a simple end-to-end check:
 ```bash
-run_test "Your New Feature" \
-    "python build_heterojunctions/your_tool.py --input test.cif --output test.vasp"
+python build_heterojunctions/your_tool.py --input test.cif --output test.vasp
 ```
 
 ---
@@ -337,19 +336,18 @@ cp templates/new_core_module_template.py interfaceml/core/NAME.py
 ### Test
 ```bash
 python -c "from interfaceml.core import NAME"
-python tests/test_NAME.py
 ```
 
 ### Integrate
 1. Add to `interfaceml/core/__init__.py`
 2. Update `README.md`
-3. Add to test suite
+3. Run a quick end-to-end check with a real input file
 
 ---
 
 ## Getting Help
 
-- **Templates not working?** Check [EXTENSIBILITY_GUIDE.md](../docs/EXTENSIBILITY_GUIDE.md)
+- **Templates not working?** Compare against existing modules in `interfaceml/core/`
 - **Need examples?** See existing modules in `interfaceml/core/`
 - **Questions?** Open an issue on GitHub
 

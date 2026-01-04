@@ -6,7 +6,8 @@
 // State management
 const state = {
     uploadedFiles: {},
-    currentTab: 'adsorbate'
+    currentTab: 'adsorbate',
+    layerMode: 'fix'  // 'fix' or 'split'
 };
 
 // Initialize application
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeTabs();
     initializeFileUploads();
     initializeButtons();
+    initializeModeSwitcher();
     checkServerHealth();
 });
 
@@ -166,6 +168,41 @@ function displayLayersFileInfo(fileType, data) {
 }
 
 /**
+ * Mode switcher for layer management
+ */
+function initializeModeSwitcher() {
+    const modeButtons = document.querySelectorAll('.mode-btn');
+    
+    modeButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const mode = button.dataset.mode;
+            
+            // Update button states
+            modeButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Show/hide appropriate parameter sections
+            const fixParams = document.getElementById('fix-mode-params');
+            const splitParams = document.getElementById('split-mode-params');
+            
+            if (mode === 'fix') {
+                fixParams.classList.remove('hidden');
+                splitParams.classList.add('hidden');
+                state.layerMode = 'fix';
+            } else if (mode === 'split') {
+                fixParams.classList.add('hidden');
+                splitParams.classList.remove('hidden');
+                state.layerMode = 'split';
+            }
+            
+            // Clear previous results
+            const resultDiv = document.getElementById('layers-result');
+            resultDiv.classList.add('hidden');
+        });
+    });
+}
+
+/**
  * Initialize action buttons
  */
 function initializeButtons() {
@@ -185,6 +222,12 @@ function initializeButtons() {
     const fixLayersBtn = document.getElementById('fix-layers-btn');
     if (fixLayersBtn) {
         fixLayersBtn.addEventListener('click', fixLayers);
+    }
+    
+    // Split layers button
+    const splitLayersBtn = document.getElementById('split-layers-btn');
+    if (splitLayersBtn) {
+        splitLayersBtn.addEventListener('click', splitLayers);
     }
     
     // Compute density button
@@ -318,6 +361,101 @@ function displayLayersResult(result) {
             <summary>Fixed atom indices (0-based)</summary>
             <pre style="max-height: 200px; overflow-y: auto; background: white; padding: 1rem; border-radius: 0.25rem;">${result.fixed_indices.join(', ')}</pre>
         </details>
+    `;
+}
+
+/**
+ * Split layers
+ */
+async function splitLayers() {
+    if (!state.uploadedFiles.layers) {
+        showMessage('Please upload a structure file', 'error');
+        return;
+    }
+    
+    const data = {
+        structure_file: state.uploadedFiles.layers.filepath,
+        n_interfaces: parseInt(document.getElementById('n-interfaces').value),
+        min_gap: parseFloat(document.getElementById('min-gap').value),
+        use_smart_detection: document.getElementById('smart-detection').checked
+    };
+    
+    try {
+        showLoading(true);
+        const response = await fetch('/api/split-layers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.status === 'success') {
+            displaySplitResult(result);
+        } else {
+            displayResult('layers-result', result, false);
+        }
+    } catch (error) {
+        displayResult('layers-result', { error: error.message }, false);
+    } finally {
+        showLoading(false);
+    }
+}
+
+/**
+ * Display layer splitting result
+ */
+function displaySplitResult(result) {
+    const resultDiv = document.getElementById('layers-result');
+    resultDiv.classList.remove('hidden', 'error');
+    
+    let layersHTML = '';
+    result.layers.forEach((layer, index) => {
+        // Determine layer icon based on type
+        let layerIcon = '📦';
+        if (layer.layer_type && layer.layer_type.includes('Perovskite')) {
+            layerIcon = '🔷';
+        } else if (layer.layer_type && layer.layer_type.includes('C60')) {
+            layerIcon = '⚫';
+        } else if (layer.layer_type && layer.layer_type.includes('C70')) {
+            layerIcon = '🟤';
+        } else if (layer.layer_type && layer.layer_type.includes('Oxide')) {
+            layerIcon = '🔶';
+        }
+        
+        layersHTML += `
+            <div class="layer-item">
+                <div class="layer-header">
+                    <span class="layer-icon">${layerIcon}</span>
+                    <strong>Layer ${layer.layer_number}</strong>
+                </div>
+                <div class="layer-details">
+                    <div class="layer-type">${layer.layer_type || 'Unknown'}</div>
+                    <div class="layer-stats">
+                        <span>Atoms: ${layer.n_atoms}</span>
+                        ${layer.z_range ? `<span>Height: ${layer.z_range}</span>` : ''}
+                    </div>
+                    <div class="layer-composition">${layer.composition}</div>
+                </div>
+                <a href="${layer.download_url}" class="download-link" download>
+                    📥 Download ${layer.filename}
+                </a>
+            </div>
+        `;
+    });
+    
+    resultDiv.innerHTML = `
+        <h4>✓ Structure Split Successfully</h4>
+        ${result.run_id ? `<p><strong>Run ID:</strong> ${result.run_id}</p>` : ''}
+        ${result.input_hash ? `<p><strong>Input Hash:</strong> ${result.input_hash}</p>` : ''}
+        <p><strong>Total interfaces detected:</strong> ${result.n_interfaces}</p>
+        <p><strong>Layers created:</strong> ${result.n_layers}</p>
+        <div class="layers-grid">
+            ${layersHTML}
+        </div>
+        <p class="result-note">
+            <em>Note: Each layer preserves the original lattice parameters (a, b, c, α, β, γ).</em>
+        </p>
     `;
 }
 

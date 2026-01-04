@@ -34,11 +34,13 @@ InterfaceML provides a complete suite of tools for heterojunction modeling with 
 - Customizable Miller indices for both materials
 - Comprehensive strain analysis and reporting
 
-### 📐 **Layer Fixing (Selective Dynamics)**
+### 📐 **Layer Management**
+- **Selective Dynamics**: Fix bottom N layers for relaxation calculations
+- **Layer Splitting**: Separate multi-layer stacks into individual files
 - Automatic layer detection for interface structures
-- Fix bottom N layers for bulk regions
 - Intelligent whole-molecule inclusion (prevents splitting organic cations)
 - Support for multi-interface structures
+- Preserves original lattice parameters when splitting
 - Compatible with VASP and CP2K
 
 ### 📊 **Density Analysis**
@@ -123,6 +125,28 @@ python build_heterojunctions/fix_interface_layers.py \
     --output perovskite_c70_c60_fixed.vasp
 ```
 
+#### 2b. Split Multi-Layer Structure
+
+```bash
+# Split a 3-layer stack (2 interfaces) into separate files
+# Each layer keeps the original lattice parameters
+python build_heterojunctions/fix_interface_layers.py \
+    --by_layers \
+    --input trilayer.vasp \
+    --n_interfaces 2 \
+    --print_only
+
+# Or use Python API
+python -c "
+from interfaceml.core import io, splitting
+structure = io.load_structure('trilayer.vasp')
+layers = splitting.split_structure_into_layers(structure, n_interfaces=2)
+for i, layer in enumerate(layers, 1):
+    io.write_poscar(layer, f'layer{i}.vasp')
+    print(f'Layer {i}: {len(layer)} atoms')
+"
+```
+
 #### 3. Compute Charge Density Difference
 
 ```bash
@@ -182,6 +206,8 @@ Then open your browser to http://localhost:5000
 - 📊 **Visual feedback** with structure information display
 - ⬇️ **Direct download** of generated structure files
 - 🔄 **Multi-tab interface** for different modeling workflows
+- ✂️ **Layer splitting** - Separate multi-layer structures (preserves lattice)
+- 🔧 **Selective dynamics** - Fix layers for relaxation
 
 ---
 
@@ -195,9 +221,7 @@ InterfaceML/
 │   ├── core/                 # Core functionality modules
 │   │   ├── io.py            # Structure I/O (VASP, CIF, XYZ)
 │   │   ├── layering.py      # Layer detection and manipulation
-│   │   ├── termination.py   # Surface termination analysis
-│   │   ├── adsorbate.py     # Adsorbate placement logic
-│   │   └── interface.py     # Interface matching algorithms
+│   │   └── splitting.py     # Smart layer splitting
 │   ├── cli/                  # Command-line interface tools
 │   │   ├── build_interface.py
 │   │   ├── fix_layers.py
@@ -219,7 +243,6 @@ InterfaceML/
 │   └── heterojunctions/
 ├── examples/                 # Tutorial notebooks and scripts
 ├── docs/                     # Additional documentation
-├── tests/                    # Unit tests
 ├── setup.py                  # Package installation script
 ├── requirements.txt          # Python dependencies
 └── README.md                 # This file
@@ -227,8 +250,10 @@ InterfaceML/
 
 ### Detailed Documentation
 - **[build_heterojunctions/README.md](build_heterojunctions/README.md)** - Comprehensive CLI usage guide
-- **[API Reference](docs/API.md)** - Python API documentation (coming soon)
-- **[Tutorials](examples/)** - Example workflows and Jupyter notebooks (coming soon)
+- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Tutorial and workflows
+- **[docs/LAYER_SPLITTING.md](docs/LAYER_SPLITTING.md)** - Layer splitting guide
+- **[docs/SMART_SPLITTING_ALGORITHM.md](docs/SMART_SPLITTING_ALGORITHM.md)** - Smart splitting algorithm details
+- **[Tutorials](examples/)** - Example workflows
 
 ---
 
@@ -342,8 +367,8 @@ cd InterfaceML
 # Install in development mode with dev dependencies
 pip install -e ".[dev]"
 
-# Run tests
-pytest tests/
+# Quick import check
+python -c "from interfaceml.core import io, layering, splitting; print('OK')"
 ```
 
 ---

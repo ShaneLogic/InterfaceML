@@ -83,9 +83,22 @@ def unwrap_periodic_1d(
         Indices of atoms in unwrapped order (sorted by unwrapped coordinate).
     coord_unwrapped
         Unwrapped coordinates in [0, period), with the cut at the largest gap.
+        
+    Notes
+    -----
+    The algorithm works by:
+    1. Sorting coordinates along the periodic direction
+    2. Finding the largest gap (typically vacuum in slab calculations)
+    3. Cutting at that gap to unwrap the periodic boundary
+    4. Reordering atoms so the cut appears at the start
     """
+    # Early return for empty arrays
     if len(values_mod) == 0:
         return np.array([], dtype=int), np.array([], dtype=float)
+    
+    # Single atom case
+    if len(values_mod) == 1:
+        return np.array([0], dtype=int), np.array([0.0], dtype=float)
 
     order = np.argsort(values_mod)
     v = values_mod[order]
@@ -94,18 +107,18 @@ def unwrap_periodic_1d(
     diffs = np.diff(v)
 
     # Also consider the wraparound gap
-    wrap_gap = float(v[0] + period - v[-1]) if len(v) > 1 else float(period)
+    wrap_gap = float(v[0] + period - v[-1])
     diffs_circ = np.concatenate([diffs, [wrap_gap]])
 
     # Find the largest gap (this is where we cut the periodic boundary)
     k_max = int(np.argmax(diffs_circ))
-    start = (k_max + 1) % len(order) if len(order) > 0 else 0
+    start = (k_max + 1) % len(order)
 
     # Reorder so that the cut is at the beginning
     order_unwrapped = np.concatenate([order[start:], order[:start]])
 
     # Compute unwrapped coordinates relative to the first atom
-    v0 = float(values_mod[order_unwrapped[0]]) if len(order_unwrapped) else 0.0
+    v0 = float(values_mod[order_unwrapped[0]])
     coord_unwrapped = np.mod(values_mod[order_unwrapped] - v0, float(period))
 
     return order_unwrapped, coord_unwrapped
@@ -216,16 +229,26 @@ def auto_layer_tolerance(height_diffs: np.ndarray) -> float:
     -------
     tolerance
         Estimated layer separation threshold in Angstroms, clamped to [0.2, 1.0].
+        
+    Notes
+    -----
+    Uses a heuristic where inter-layer gaps are typically ~6x larger than
+    intra-layer atomic separations. The result is clamped to reasonable
+    physical values for atomic structures.
     """
+    # Filter to keep only meaningful differences (avoid numerical noise)
     diffs = np.asarray(height_diffs, dtype=float)
     diffs = diffs[diffs > 1e-8]
 
     if diffs.size == 0:
-        return 0.35  # Default fallback
+        return 0.35  # Default fallback for edge cases
 
+    # Use median for robustness against outliers
     median = float(np.median(diffs))
     threshold = 6.0 * median  # Heuristic: inter-layer gaps are ~6x intra-layer
-    return float(max(0.20, min(1.00, threshold)))
+    
+    # Clamp to physically reasonable range [0.2, 1.0] Angstroms
+    return float(np.clip(threshold, 0.20, 1.00))
 
 
 def split_layers_by_z(
@@ -328,6 +351,12 @@ def connected_components_by_distance(
     -------
     components
         List of connected components, each a list of global atom indices.
+        
+    Notes
+    -----
+    Uses depth-first search (DFS) for component detection. Time complexity
+    is O(n^2) for pairwise distance checks plus O(n + e) for DFS traversal,
+    where n is the number of atoms and e is the number of bonds.
     """
     if indices.size == 0:
         return []
@@ -337,31 +366,40 @@ def connected_components_by_distance(
     syms = get_element_symbols(structure)
     n = len(idx_list)
 
-    # Build adjacency list
+    # Build adjacency list with optimized distance checks
     adj: List[List[int]] = [[] for _ in range(n)]
+    
+    # Pre-extract coordinates and symbols for faster access
+    local_coords = coords[idx_list]
+    local_syms = [syms[ia] for ia in idx_list]
+    
     for a in range(n):
-        ia = idx_list[a]
-        sa = syms[ia]
-        pa = coords[ia]
+        sa = local_syms[a]
+        pa = local_coords[a]
         for b in range(a + 1, n):
-            ib = idx_list[b]
-            sb = syms[ib]
+            sb = local_syms[b]
+            # Try both orderings for cutoff lookup
             dmax = cutoffs.get((sa, sb)) or cutoffs.get((sb, sa))
             if dmax is None:
                 continue
-            if float(np.linalg.norm(pa - coords[ib])) <= float(dmax):
+            # Compute squared distance to avoid sqrt when possible
+            dist_sq = np.sum((pa - local_coords[b]) ** 2)
+            if dist_sq <= dmax * dmax:
                 adj[a].append(b)
                 adj[b].append(a)
 
     # DFS to find connected components
     seen = [False] * n
     comps: List[List[int]] = []
+    
     for start in range(n):
         if seen[start]:
             continue
+        # Use iterative DFS to avoid recursion limit issues
         stack = [start]
         seen[start] = True
         comp_local: List[int] = []
+        
         while stack:
             u = stack.pop()
             comp_local.append(u)
@@ -369,6 +407,8 @@ def connected_components_by_distance(
                 if not seen[v]:
                     seen[v] = True
                     stack.append(v)
+        
+        # Convert local indices back to global
         comps.append([idx_list[i] for i in comp_local])
 
     return comps

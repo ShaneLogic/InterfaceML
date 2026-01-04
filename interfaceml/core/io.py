@@ -8,11 +8,18 @@ used in DFT calculations, with particular support for:
 - CP2K-style XYZ trajectories with cell vectors
 
 All functions return pymatgen Structure objects for downstream processing.
+
+Performance Notes
+-----------------
+- Structure loading is cached to avoid redundant disk I/O and parsing
+- Use load_structure() for automatic format detection with caching
+- Direct file format readers (read_cp2k_xyz_last_frame) bypass cache
 """
 
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -82,8 +89,7 @@ def read_cp2k_xyz_last_frame(
             break
 
         comment_line = lines[i + 1].strip()
-        match = _TV_PATTERN.search(comment_line)
-        if match:
+        if (match := _TV_PATTERN.search(comment_line)):
             values = [float(x) for x in match.groups()]
             last_cell = np.array(values, dtype=float).reshape(3, 3)
 
@@ -156,9 +162,11 @@ def load_structure(
 
         if cell is None:
             # Infer a fallback orthorhombic box from coordinate extents
-            mins = coords.min(axis=0)
-            maxs = coords.max(axis=0)
-            span = maxs - mins
+            # This ensures molecules aren't clipped at periodic boundaries
+            coord_min = coords.min(axis=0)
+            coord_max = coords.max(axis=0)
+            span = coord_max - coord_min
+            # Use max of computed size + padding or minimum fallback size
             a = max(span[0] + fallback_padding, fallback_box_size[0])
             b = max(span[1] + fallback_padding, fallback_box_size[1])
             c = max(span[2] + fallback_padding, fallback_box_size[2])
@@ -174,8 +182,8 @@ def load_structure(
             to_unit_cell=False,
         )
 
-    # For VASP and CIF files, delegate to pymatgen
-    return Structure.from_file(str(path))
+    # For VASP and CIF files, use cached loader for better performance
+    return _load_and_cache_structure(str(path))
 
 
 def write_poscar(
@@ -219,5 +227,34 @@ def get_element_symbols(structure: Structure) -> List[str]:
     -------
     symbols
         List of element symbols (length = number of sites).
+        
+    Notes
+    -----
+    This is a frequently-called utility function. For repeated calls on
+    the same structure, consider caching the result at the call site.
     """
     return [str(site.specie) for site in structure.sites]
+
+
+@lru_cache(maxsize=32)
+def _load_and_cache_structure(filepath_str: str) -> Structure:
+    """
+    Internal cached structure loader.
+    
+    Parameters
+    ----------
+    filepath_str
+        String path to structure file.
+        
+    Returns
+    -------
+    structure
+        Loaded pymatgen Structure.
+        
+    Notes
+    -----
+    Uses LRU cache to store up to 32 recently loaded structures.
+    Cache is based on file path string, so modifications to files
+    won't be automatically detected.
+    """
+    return Structure.from_file(filepath_str)

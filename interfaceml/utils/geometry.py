@@ -93,18 +93,33 @@ def estimate_molecule_diameter(coords: np.ndarray) -> float:
     -------
     diameter
         Maximum pairwise distance in Angstroms.
+        
+    Notes
+    -----
+    For large molecules (>100 atoms), consider using scipy.spatial.distance.pdist
+    for better performance. This implementation prioritizes simplicity.
     """
+    coords = np.asarray(coords, dtype=float)
+    
     if len(coords) == 0:
         return 0.0
     if len(coords) == 1:
         return 0.0
 
-    # For small molecules, brute-force is fine
+    # For molecules with many atoms, vectorized approach is more efficient
+    if len(coords) > 50:
+        # Compute all pairwise distances at once using broadcasting
+        diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+        distances = np.linalg.norm(diff, axis=2)
+        return float(np.max(distances))
+    
+    # For small molecules, simple loop is fine and more memory-efficient
     max_dist = 0.0
     for i in range(len(coords)):
         for j in range(i + 1, len(coords)):
-            dist = compute_distance(coords[i], coords[j])
-            max_dist = max(max_dist, dist)
+            dist = float(np.linalg.norm(coords[i] - coords[j]))
+            if dist > max_dist:
+                max_dist = dist
 
     return max_dist
 
