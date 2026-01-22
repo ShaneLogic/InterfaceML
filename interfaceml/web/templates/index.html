@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InterfaceML - Heterojunction Modeling Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1 class="logo">
+                    <span class="logo-icon">⚛️</span>
+                    InterfaceML
+                </h1>
+                <p class="tagline">Professional Heterojunction Modeling Platform</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Feature Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="adsorbate">
+                    <span class="tab-icon">🔬</span>
+                    Adsorbate Modeling
+                </button>
+                <button class="tab-btn" data-tab="interface">
+                    <span class="tab-icon">⚡</span>
+                    Interface Builder
+                </button>
+                <button class="tab-btn" data-tab="layers">
+                    <span class="tab-icon">📐</span>
+                    Layer Fixing
+                </button>
+                <button class="tab-btn" data-tab="density">
+                    <span class="tab-icon">📊</span>
+                    Density Analysis
+                </button>
+            </div>
+
+            <!-- Tab Content: Adsorbate Modeling -->
+            <div id="adsorbate" class="tab-content active">
+                <div class="panel">
+                    <h2 class="panel-title">Build Adsorbate Models</h2>
+                    <p class="panel-description">
+                        Create perovskite/fullerene interfaces for solar cell modeling.
+                        Upload your base structure and adsorbate molecules.
+                    </p>
+
+                    <div class="form-grid">
+                        <div class="form-section">
+                            <h3>Base Structure (Perovskite)</h3>
+                            <div class="file-upload-area" id="base-upload">
+                                <input type="file" id="base-file" accept=".cif,.vasp,.poscar" hidden>
+                                <label for="base-file" class="file-upload-label">
+                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-text">Click or drag file here</span>
+                                    <span class="upload-hint">Supports .cif, .vasp, .poscar</span>
+                                </label>
+                            </div>
+                            <div id="base-info" class="file-info hidden"></div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Adsorbate Molecule(s)</h3>
+                            <div class="file-upload-area" id="adsorbate-upload">
+                                <input type="file" id="adsorbate-file" accept=".cif,.vasp,.poscar" multiple hidden>
+                                <label for="adsorbate-file" class="file-upload-label">
+                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-text">Click or drag files here</span>
+                                    <span class="upload-hint">Multiple files for stacking</span>
+                                </label>
+                            </div>
+                            <div id="adsorbate-info" class="file-info hidden"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Parameters</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="termination">Surface Termination</label>
+                                <select id="termination" class="form-control">
+                                    <option value="PbI">PbI-terminated</option>
+                                    <option value="FAI">FAI-terminated</option>
+                                    <option value="MAI">MAI-terminated</option>
+                                    <option value="AI">AI-terminated</option>
+                                </select>
+                            </div>
+                            <div class="param-item">
+                                <label for="distance">Distance (Å)</label>
+                                <input type="number" id="distance" class="form-control" value="2.5" step="0.1" min="1.0">
+                            </div>
+                            <div class="param-item">
+                                <label for="miller">Miller Index</label>
+                                <input type="text" id="miller" class="form-control" value="0 0 1" placeholder="h k l">
+                            </div>
+                            <div class="param-item">
+                                <label for="supercell">Supercell</label>
+                                <select id="supercell" class="form-control">
+                                    <option value="auto">Auto (optimal)</option>
+                                    <option value="1x1">1×1</option>
+                                    <option value="2x2">2×2</option>
+                                    <option value="3x3">3×3</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="build-adsorbate-btn" class="btn btn-primary">
+                            <span class="btn-icon">🚀</span>
+                            Build Structure
+                        </button>
+                    </div>
+
+                    <div id="adsorbate-result" class="result-panel hidden"></div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Interface Builder -->
+            <div id="interface" class="tab-content">
+                <div class="panel">
+                    <h2 class="panel-title">Build Heterojunction Interfaces</h2>
+                    <p class="panel-description">
+                        Create coherent interfaces between two materials with automatic
+                        strain matching and supercell optimization.
+                    </p>
+
+                    <div class="form-grid">
+                        <div class="form-section">
+                            <h3>Substrate Material</h3>
+                            <div class="file-upload-area" id="substrate-upload">
+                                <input type="file" id="substrate-file" accept=".cif,.vasp,.poscar" hidden>
+                                <label for="substrate-file" class="file-upload-label">
+                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-text">Upload substrate</span>
+                                </label>
+                            </div>
+                            <div id="substrate-info" class="file-info hidden"></div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Film Material</h3>
+                            <div class="file-upload-area" id="film-upload">
+                                <input type="file" id="film-file" accept=".cif,.vasp,.poscar" hidden>
+                                <label for="film-file" class="file-upload-label">
+                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-text">Upload film</span>
+                                </label>
+                            </div>
+                            <div id="film-info" class="file-info hidden"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Interface Parameters</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="miller-sub">Substrate Miller</label>
+                                <input type="text" id="miller-sub" class="form-control" value="0 0 1">
+                            </div>
+                            <div class="param-item">
+                                <label for="miller-film">Film Miller</label>
+                                <input type="text" id="miller-film" class="form-control" value="0 0 1">
+                            </div>
+                            <div class="param-item">
+                                <label for="max-area">Max Area (Å²)</label>
+                                <input type="number" id="max-area" class="form-control" value="400" step="50">
+                            </div>
+                            <div class="param-item">
+                                <label for="strain-mode">Strain Mode</label>
+                                <select id="strain-mode" class="form-control">
+                                    <option value="bidirectional">Bidirectional</option>
+                                    <option value="film_only">Film only</option>
+                                    <option value="substrate_only">Substrate only</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="build-interface-btn" class="btn btn-primary">
+                            <span class="btn-icon">🚀</span>
+                            Build Interface
+                        </button>
+                    </div>
+
+                    <div id="interface-result" class="result-panel hidden"></div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Layer Fixing -->
+            <div id="layers" class="tab-content">
+                <div class="panel">
+                    <h2 class="panel-title">Layer Management Tools</h2>
+                    <p class="panel-description">
+                        Fix layers for relaxation or split multi-layer structures into separate files.
+                    </p>
+
+                    <!-- Mode Selection -->
+                    <div class="form-section">
+                        <h3>Select Operation Mode</h3>
+                        <div class="mode-selector">
+                            <button class="mode-btn active" data-mode="fix">
+                                <span class="mode-icon">🔧</span>
+                                Fix Layers (Selective Dynamics)
+                            </button>
+                            <button class="mode-btn" data-mode="split">
+                                <span class="mode-icon">✂️</span>
+                                Split into Layers
+                            </button>
+                            <button class="mode-btn" data-mode="pdos">
+                                <span class="mode-icon">🧪</span>
+                                PDOS Layer Indices (CP2K)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Structure File</h3>
+                        <div class="file-upload-area" id="layers-upload">
+                            <input type="file" id="layers-file" accept=".cif,.vasp,.poscar,.xyz" hidden>
+                            <label for="layers-file" class="file-upload-label">
+                                <span class="upload-icon">📁</span>
+                                <span class="upload-text">Upload structure</span>
+                                <span class="upload-hint">.cif, .vasp, .xyz</span>
+                            </label>
+                        </div>
+                        <div id="layers-file-info" class="file-info hidden"></div>
+                    </div>
+
+                    <!-- Fix Layers Mode -->
+                    <div id="fix-mode-params" class="form-section">
+                        <h3>Fixing Parameters</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="n-fix-layers">Number of Layers to Fix</label>
+                                <input type="number" id="n-fix-layers" class="form-control" value="3" min="1" max="10">
+                            </div>
+                            <div class="param-item">
+                                <label for="include-molecules">
+                                    <input type="checkbox" id="include-molecules" checked>
+                                    Include whole molecules
+                                </label>
+                                <span class="param-hint">Ensures organic molecules aren't split</span>
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="fix-layers-btn" class="btn btn-primary">
+                                <span class="btn-icon">🔧</span>
+                                Fix Layers
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Split Layers Mode -->
+                    <div id="split-mode-params" class="form-section hidden">
+                        <h3>Splitting Parameters</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="n-interfaces">Number of Interfaces</label>
+                                <input type="number" id="n-interfaces" class="form-control" value="1" min="1" max="5">
+                                <span class="param-hint">1 interface → 2 layers, 2 interfaces → 3 layers</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="min-gap">Minimum Gap (Å)</label>
+                                <input type="number" id="min-gap" class="form-control" value="1.5" step="0.1" min="0.0">
+                                <span class="param-hint">Recommended: 1.5-2.0 Å to avoid intra-layer gaps</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="smart-detection">
+                                    <input type="checkbox" id="smart-detection" checked>
+                                    Smart detection (composition-aware)
+                                </label>
+                                <span class="param-hint">Detects composition changes across gaps</span>
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="split-layers-btn" class="btn btn-primary">
+                                <span class="btn-icon">✂️</span>
+                                Split into Layers
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PDOS Layers Mode -->
+                    <div id="pdos-mode-params" class="form-section hidden">
+                        <h3>PDOS Layer Index Parameters</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="pdos-n-interfaces">Number of Interfaces</label>
+                                <input type="number" id="pdos-n-interfaces" class="form-control" value="1" min="1" step="1">
+                                <span class="param-hint">2 interfaces → 3 layers</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-min-gap">Minimum Gap (Å)</label>
+                                <input type="number" id="pdos-min-gap" class="form-control" value="1.5" min="0" step="0.1">
+                                <span class="param-hint">Recommended: 1.5–2.0 Å</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-smart-detection">
+                                    <input type="checkbox" id="pdos-smart-detection" checked>
+                                    Smart detection (composition-aware)
+                                </label>
+                                <span class="param-hint">Detects composition changes across gaps</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-filename">PDOS Filename</label>
+                                <input type="text" id="pdos-filename" class="form-control" placeholder="auto">
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-nlumo">NLUMO</label>
+                                <input type="number" id="pdos-nlumo" class="form-control" value="250" min="0" step="1">
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="pdos-layers-btn" class="btn btn-primary">
+                                <span class="btn-icon">🧪</span>
+                                Generate PDOS Lists
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="layers-result" class="result-panel hidden"></div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Density Analysis -->
+            <div id="density" class="tab-content">
+                <div class="panel">
+                    <h2 class="panel-title">Charge Density Difference</h2>
+                    <p class="panel-description">
+                        Compute Δρ = ρ(interface) - ρ(layer1) - ρ(layer2) from
+                        CP2K cube files for charge transfer analysis.
+                    </p>
+
+                    <div class="form-section">
+                        <h3>Cube Files</h3>
+                        <div class="form-grid">
+                            <div class="file-upload-area">
+                                <input type="file" id="interface-cube" accept=".cube" hidden>
+                                <label for="interface-cube" class="file-upload-label">
+                                    <span class="upload-text">Interface density</span>
+                                </label>
+                            </div>
+                            <div class="file-upload-area">
+                                <input type="file" id="layer1-cube" accept=".cube" hidden>
+                                <label for="layer1-cube" class="file-upload-label">
+                                    <span class="upload-text">Layer 1 density</span>
+                                </label>
+                            </div>
+                            <div class="file-upload-area">
+                                <input type="file" id="layer2-cube" accept=".cube" hidden>
+                                <label for="layer2-cube" class="file-upload-label">
+                                    <span class="upload-text">Layer 2 density</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="compute-density-btn" class="btn btn-primary">
+                            <span class="btn-icon">📈</span>
+                            Compute Δρ
+                        </button>
+                    </div>
+
+                    <div id="density-result" class="result-panel hidden"></div>
+
+                    <div class="divider"></div>
+
+                    <h2 class="panel-title">TDOS + PDOS Visualization</h2>
+                    <p class="panel-description">
+                        Upload CP2K TDOS/PDOS outputs to generate a single overlay plot.
+                        Add multiple PDOS files for multi-layer interfaces.
+                    </p>
+
+                    <div class="form-section">
+                        <h3>DOS Files</h3>
+                        <div class="dos-upload-container">
+                            <!-- TDOS Upload (always shown) -->
+                            <div class="file-upload-area" id="tdos-upload">
+                                <input type="file" id="tdos-file" accept=".dos" hidden>
+                                <label for="tdos-file" class="file-upload-label">
+                                    <span class="upload-text">Upload TDOS (.dos)</span>
+                                </label>
+                            </div>
+                            <div id="tdos-info" class="file-info hidden"></div>
+                        </div>
+                        
+                        <!-- Dynamic PDOS Upload Container -->
+                        <div id="pdos-upload-container">
+                            <!-- PDOS uploads will be added here dynamically -->
+                        </div>
+                        
+                        <div class="pdos-controls">
+                            <button type="button" id="add-pdos-btn" class="btn btn-secondary btn-sm">
+                                <span class="btn-icon">➕</span> Add PDOS File
+                            </button>
+                            <span class="pdos-hint">Add one PDOS file per layer (N interfaces → N+1 layers)</span>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Plot Settings</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="dos-title">Plot Title</label>
+                                <input type="text" id="dos-title" class="form-control" placeholder="TDOS + PDOS">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-output-name">Output Image Name</label>
+                                <input type="text" id="dos-output-name" class="form-control" placeholder="dos_tdos_pdos_overlay">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-sigma">Gaussian Broadening σ (eV)</label>
+                                <input type="number" id="dos-sigma" class="form-control" value="0.12" min="0" step="0.01">
+                                <span class="param-hint">0.08–0.20 eV recommended</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-grid-step">Energy Grid Step (eV)</label>
+                                <input type="number" id="dos-grid-step" class="form-control" value="0.02" min="0.005" step="0.005">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-x-min">Energy Min (eV)</label>
+                                <input type="number" id="dos-x-min" class="form-control" placeholder="auto" step="0.5">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-x-max">Energy Max (eV)</label>
+                                <input type="number" id="dos-x-max" class="form-control" placeholder="auto" step="0.5">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-normalize">
+                                    <input type="checkbox" id="dos-normalize">
+                                    Normalize curves (0–1)
+                                </label>
+                                <span class="param-hint">Useful for comparing shapes</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-tdos-source">TDOS Data Source</label>
+                                <select id="dos-tdos-source" class="form-control">
+                                    <option value="auto" selected>Auto detect (recommended)</option>
+                                    <option value="occupation">Occupation / ΔE (states/eV)</option>
+                                    <option value="density">Density column (raw)</option>
+                                </select>
+                                <span class="param-hint">Use Occupation for correct DOS magnitude</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-pdos-scale">PDOS Scaling</label>
+                                <select id="dos-pdos-scale" class="form-control">
+                                    <option value="per_atom" selected>Per atom (recommended)</option>
+                                    <option value="match_tdos">Match TDOS peak</option>
+                                    <option value="none">No scaling</option>
+                                </select>
+                                <span class="param-hint">Prevents PDOS from overwhelming TDOS</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-tdos-scale">TDOS Scaling</label>
+                                <select id="dos-tdos-scale" class="form-control">
+                                    <option value="none" selected>No scaling</option>
+                                    <option value="per_atom">Per atom (total atoms)</option>
+                                </select>
+                                <span class="param-hint">Divides TDOS by total atom count</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-tdos-atoms">TDOS Total Atoms</label>
+                                <input type="number" id="dos-tdos-atoms" class="form-control" placeholder="auto">
+                                <span class="param-hint">Auto uses sum of PDOS list atoms</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="plot-dos-btn" class="btn btn-primary">
+                            <span class="btn-icon">🖼️</span>
+                            Generate DOS Plot
+                        </button>
+                    </div>
+
+                    <div id="dos-result" class="result-panel hidden"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>InterfaceML v1.0.0 | Heterojunction Modeling Platform</p>
+            <p class="footer-note">
+                Developed for DFT calculations | Open Source under MIT License
+            </p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

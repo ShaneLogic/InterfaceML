@@ -1,38 +1,96 @@
-# Auto Interface Builder - Usage Guide
+# Auto Interface Builder (and related tools)
 
-This guide provides examples of how to use `auto_interface_builder.py` and `fix_interface_layers.py` to build heterojunction interfaces with selective dynamics for DFT relaxation calculations.
+This folder contains utilities to build heterojunction interfaces and prepare inputs for DFT relaxation, plus a helper script to generate **difference charge density** from CP2K electron-density `.cube` files (visualizable in **VESTA**).
 
-## Overview
+## Contents
 
-The workflow consists of two steps:
-1. **Generate interface structure** using `auto_interface_builder.py`
-2. **Add selective dynamics** using `fix_interface_layers.py` to relax interface layers and fix bulk layers
+- [Quick start (recommended workflow)](#quick-start-recommended-workflow)
+- [0) Enlarge a CIF unit cell (add vacuum) (`expand_cif_cell.py`)](#0-enlarge-a-cif-unit-cell-add-vacuum-expand_cif_cellpy)
+- [1) Build heterojunction interface (`interface_builder.py`)](#1-build-heterojunction-interface-interface_builderpy)
+- [2) Add selective dynamics (`fix_interface_layers.py`)](#2-add-selective-dynamics-fix_interface_layerspy)
+- [3) Split an existing heterojunction into layers (for differential charge)](#3-split-an-existing-heterojunction-into-layers-for-differential-charge)
+- [4) Difference charge density from CP2K cubes (`delta_density_cube.py`)](#4-difference-charge-density-from-cp2k-cubes-delta_density_cubepy)
+- [5) Stack pre-relaxed slabs (alternative) (`stack_slabs_relax.py`)](#5-stack-pre-relaxed-slabs-alternative-stack_slabs_relaxpy)
+- [Tips](#tips)
+- [Troubleshooting](#troubleshooting)
 
-## Step 1: Generate Interface Structure
-
-### Basic Usage
+## Quick start (recommended workflow)
 
 ```bash
-python build_heterojunctions/auto_interface_builder.py \
-    --a structures/perovskites/H6PbCI3N.cif \
-    --b structures/etl/TiO2.cif \
-    --miller_a 0,0,1 \
-    --miller_b 1,0,1 \
-    --vacuum 20 \
-    --sep 3.2 \
-    --strain_target A \
-    --use_builder_interface \
-    --max_atoms 300
+# 1) Build interface
+python build_heterojunctions/interface_builder.py \
+  --a <structure_A.(cif|vasp)> \
+  --b <structure_B.(cif|vasp)> \
+  --miller_a <h,k,l> \
+  --miller_b <h,k,l> \
+  --use_builder_interface \
+  --max_atoms 300
+
+# 2) Add selective dynamics
+python build_heterojunctions/fix_interface_layers.py \
+  <A>@<B>.vasp \
+  -o <A>@<B>_relaxed.vasp \
+  -n 2 \
+  -t 2.0
 ```
 
-### Required Arguments
+## 0) Enlarge a CIF unit cell (add vacuum) (`expand_cif_cell.py`)
+
+This helper script enlarges the **unit cell** to a target size (e.g., \(a=b=c=20\) Å) while keeping the
+**molecular geometry** unchanged. This is useful when you want to add vacuum around an isolated molecule
+(C60/C70, etc.) before building adsorption or interface models.
+
+### Recommended usage (keep the structure centered)
+
+```bash
+# Enlarge the cell to 20 Å and keep the molecule centered in the new unit cell.
+# --wrap keeps fractional coordinates within [0, 1) for nicer visualization.
+python build_heterojunctions/expand_cif_cell.py \
+  structures/etl/C60-Ih.cif \
+  structures/etl/C70-D5h.cif \
+  --target 20 \
+  --center \
+  --wrap \
+  --suffix _cell20
+```
+
+This will write:
+
+- `structures/etl/C60-Ih_cell20.cif`
+- `structures/etl/C70-D5h_cell20.cif`
+
+### Notes
+
+- `--target`: Sets the new cell length (Å). The script sets \(a=b=c=\) target and keeps the original angles.
+- `--center`: Translates the structure so its **geometric center** is at the **new cell center**.
+- `--wrap`: Wraps fractional coordinates back to \([0, 1)\) after transforming/translating.
+- If your shell complains about parentheses in paths (e.g. zsh), wrap paths in quotes.
+
+## 1) Build heterojunction interface (`interface_builder.py`)
+
+### Basic usage
+
+```bash
+python build_heterojunctions/interface_builder.py \
+  --a structures/perovskites/H6PbCI3N.cif \
+  --b structures/etl/TiO2.cif \
+  --miller_a 0,0,1 \
+  --miller_b 1,0,1 \
+  --vacuum 20 \
+  --sep 3.2 \
+  --strain_target A \
+  --use_builder_interface \
+  --max_atoms 300
+```
+
+### Required arguments
 
 - `--a`: Path to structure file A (CIF/POSCAR format)
 - `--b`: Path to structure file B (CIF/POSCAR format)
 - `--miller_a`: Miller indices for material A (e.g., `0,0,1`)
 - `--miller_b`: Miller indices for material B (e.g., `1,0,1`)
 
-### Optional Arguments
+### Common optional arguments
 
 - `--slab_thickness_a`: Slab thickness for A in Å (default: 20.0)
 - `--slab_thickness_b`: Slab thickness for B in Å (default: 12.0)
@@ -44,37 +102,175 @@ python build_heterojunctions/auto_interface_builder.py \
 - `--use_builder_interface`: Use CoherentInterfaceBuilder method (recommended for ordered interfaces)
 - `--max_atoms`: Maximum number of atoms in final structure (default: 400)
 
-### Output Files from Step 1
+### Outputs
 
-The script generates three POSCAR files:
+The script generates three POSCAR files (base name is `<A>@<B>` derived from filenames):
 
-1. `auto_interface_bottom_strained.vasp` - Bottom slab (substrate) structure
-2. `auto_interface_top_strained.vasp` - Top slab (film) structure  
-3. `auto_interface_combined.vasp` - Combined heterojunction structure (input for Step 2)
+1. `<A>@<B>_bottom_strained.vasp` - Bottom slab (substrate)
+2. `<A>@<B>_top_strained.vasp` - Top slab (film)
+3. `<A>@<B>.vasp` - Combined heterojunction structure (input for Step 2)
 
-## Step 2: Add Selective Dynamics
+## 1b) Build a perovskite/C60 interface model (adsorbate mode)
 
-### Basic Usage
+This mode targets **FAPbI3/C60**-like interface modeling (C60 as ETL) for subsequent DFT calculations.
+It generates a perovskite **slab** with a chosen surface termination and places a **C60 molecule** above
+the top surface with a user-controlled separation.
+
+### Important note on periodicity (DFT boundary conditions)
+
+Plane-wave DFT uses **3D periodic boundary conditions**. That means the C60 molecule is always periodic
+in the in-plane directions (x/y). You control whether this represents:
+
+- a **dense periodic C60 overlayer** (small in-plane cell), or
+- an **isolated C60 adsorption** model (larger in-plane supercell to reduce image–image interactions).
+
+Use `--auto_supercell` or `--supercell_xy` to make the in-plane cell larger and avoid unphysical C60–C60
+overlap across periodic images.
+
+### Basic usage (recommended)
+
+```bash
+python build_heterojunctions/interface_builder.py \
+  --adsorbate_mode \
+  --base_cif structures/perovskites/H5PbCI3N2.cif \
+  --adsorbate_cif structures/etl/C60-Ih.cif \
+  --termination PbI \
+  --miller 0,0,1 \
+  --slab_thickness 18 \
+  --vacuum 20 \
+  --adsorbate_distance 3.5 \
+  --auto_supercell \
+  --max_atoms 400
+```
+
+### Multi-adsorbate stack (3 layers / 2 interfaces)
+
+To build a **three-layer** model (perovskite bottom / C70 middle / C60 top) with **two interfaces**
+and a fixed **2 Å gap between neighboring layers**, use `--adsorbates` + `--layer_gaps`:
+
+```bash
+python build_heterojunctions/interface_builder.py \
+  --adsorbate_mode \
+  --base_cif structures/perovskites/H5PbCI3N2.cif \
+  --termination AI \
+  --adsorbates "structures/etl/C70-D5h.cif,structures/etl/C60-Ih.cif" \
+  --layer_gaps "2,2" \
+  --miller 0,0,1 \
+  --slab_thickness 18 \
+  --vacuum 20 \
+  --auto_supercell \
+  --max_atoms 500
+```
+
+**Interpretation of `--layer_gaps`:**
+
+- `layer_gaps[0]`: gap between perovskite slab top and C70 bottom (along the surface normal)
+- `layer_gaps[1]`: gap between C70 top and C60 bottom
+
+### Key parameters
+
+- `--termination`: Choose perovskite termination (lead-iodide perovskites):
+  - `PbI`: inorganic termination (Pb/I-rich outermost layer)
+  - `FAI`: FA + I termination
+  - `MAI`: MA + I termination
+  - `AI`: generic A-site organic + I termination (accepts MA and/or FA; recommended for mixed-cation perovskites such as MA0.5FA0.5PbI3)
+- **Default behavior**: the slab is built as a **symmetric slab**, i.e. the **top and bottom surfaces have the same termination** (recommended for slab DFT).
+- `--no_symmetric_slab`: Disable symmetric-slab enforcement (top/bottom terminations may differ). **Not recommended**; only useful for debugging.
+- `--adsorbate_distance`: Target distance (Å) between **top-most slab atom** and the **lowest C atom in C60**
+  along the surface normal
+- `--adsorbates`: Comma-separated adsorbate CIFs for multilayer stacking (bottom->top)
+- `--layer_gaps`: Comma-separated gaps in Å, must match `--adsorbates` length
+- `--auto_supercell`: Automatically choose a small in-plane supercell to reduce C60 periodic-image interactions
+  (heuristic target: `c60_diameter + c60_buffer`)
+- `--supercell_xy nx,ny`: Explicitly set the in-plane supercell (e.g., `2,2` or `3,3`)
+- `--c60_diameter`, `--c60_buffer`: Heuristic controls for `--auto_supercell` (defaults: 7.1 Å and 3.0 Å). For other fullerenes (e.g., C70), set `--c60_diameter` accordingly.
+- `--adsorbate_xy fx,fy`: Optional lateral placement of the C60 geometric center in fractional coordinates
+
+### Outputs
+
+Two POSCAR files are written to `structures/heterojunctions/`:
+
+1. `<base>@<ads>_<termination>_<supercell>_d<distance>_slab.vasp` - the slab only
+2. `<base>@<ads>_<termination>_<supercell>_d<distance>.vasp` - slab + C60 combined (DFT input)
+
+## 2) Add selective dynamics (`fix_interface_layers.py`)
+
+### Basic usage
 
 ```bash
 python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
-    -n 2 \
-    -t 2.0
+  <A>@<B>.vasp \
+  -o <A>@<B>_relaxed.vasp \
+  -n 2 \
+  -t 2.0
 ```
 
-### Parameters for fix_interface_layers.py
+### Parameters
 
 - `input_file`: Input POSCAR file (combined heterojunction from Step 1)
-- `-o, --output`: Output POSCAR file (default: input_file with '_relaxed' suffix)
+- `-o, --output`: Output POSCAR file (default: input_file with `_relaxed` suffix)
 - `-n, --n_layers`: Number of layers to relax on each side of interface (default: 1)
-- `-t, --thickness`: Layer thickness threshold in Angstroms (default: 2.0)
+- `-t, --thickness`: Layer thickness threshold in Å (default: 2.0)
 - `-m, --method`: Interface identification method: `density_gap`, `median`, or `max_gap` (default: `density_gap`)
 
-### Selective Dynamics Format
+### Mode B: split a stacked heterostructure into layers and fix selected layer(s)
 
-The output POSCAR file contains:
+For stacked models with multiple interfaces (e.g. perovskite/C70/C60), it is often convenient to
+**split the structure into (n_interfaces + 1) layers** and then fix one or more complete layers.
+
+Rule:
+- 1 interface  → 2 layers
+- 2 interfaces → 3 layers
+- ...
+
+Example (2 interfaces → 3 layers; fix the bottom layer):
+
+```bash
+python build_heterojunctions/fix_interface_layers.py your_stacked_model.vasp \
+  --by_layers \
+  --n_interfaces 2 \
+  --fixed_layers 1 \
+  --print_only
+```
+
+Notes:
+- `--fixed_layers` uses **1-based layer numbering** (Layer 1 = bottom).
+- The script prints `FIXED_ATOMS LIST: ...` to the terminal.
+- Layer detection uses the **largest gaps along the interface normal** (from `a x b`).
+- The input can be `POSCAR/VASP/CIF` as well as `CP2K .xyz` (the `.xyz` should include `Tv_1/Tv_2/Tv_3` in the comment line for correct lattice handling).
+
+### Mode C: fix the bottom N z-layers (direct height clustering; terminal output only)
+
+If you simply want to **fix the bottom N atomic layers** (from bottom to top) without specifying the
+number of interfaces, use `--by_z_layers`. This mode prints a CP2K-style `FIXED_ATOMS LIST` and exits.
+
+Example (fix bottom 4 layers):
+
+```bash
+python build_heterojunctions/fix_interface_layers.py structures/heterojunctions/fapbi3-1@c70-1@c60-1_AI_g2.xyz \
+  --by_z_layers \
+  --n_fix_layers 4 \
+  --tol 0.4
+```
+
+Notes:
+- `--tol` is the layer clustering tolerance in Å; if omitted, it is auto-estimated.
+- For CP2K `.xyz`, include `Tv_1/Tv_2/Tv_3` in the comment line whenever possible.
+- By default, the script ensures **whole organic molecules** (e.g., MA/FA) are not cut by the layer boundary:
+  if any atom of a molecule is selected in the fixed region, **all atoms of that molecule** are included.
+  Disable this with `--no_include_molecules` if you really want strict z-only selection.
+
+### Engineering note: shared helper modules
+
+To keep the CLI behavior stable while improving maintainability, common logic is factored into:
+
+- `build_heterojunctions/_utils_xyz.py`: CP2K XYZ parsing (Tv_ vectors)
+- `build_heterojunctions/_utils_structures.py`: structure loading (`POSCAR/CIF/XYZ`)
+- `build_heterojunctions/_utils_layering.py`: interface normal, periodic unwrapping, gap-based splitting, z-layer clustering, whole-molecule inclusion
+
+All CLI tools keep their original command-line interface; the refactor is internal-only.
+
+### Selective dynamics format (in output POSCAR)
 
 ```
 Selective dynamics
@@ -87,159 +283,171 @@ direct
 - `T T T`: Atom is free to relax (interface layers)
 - `F F F`: Atom is fixed (bulk layers)
 
-## Complete Workflow Examples
+## 3) Split an existing heterojunction into layers (for differential charge)
 
-### Example 1: Standard Workflow (Recommended)
-
-**Step 1**: Generate interface structure
+If you already have a heterojunction model (e.g. a CIF exported from Multiwfn) and need to split it into independent layers while keeping the **relative positions inside the unit cell unchanged**, use:
 
 ```bash
-python build_heterojunctions/auto_interface_builder.py \
-    --a structures/perovskites/H6PbCI3N.cif \
-    --b structures/etl/TiO2.cif \
-    --miller_a 0,0,1 \
-    --miller_b 1,0,1 \
-    --vacuum 20 \
-    --sep 3.2 \
-    --strain_target A \
-    --max_atoms 300 \
-    --use_builder_interface
+python build_heterojunctions/interface_builder.py \
+  --split_layers \
+  --input structures/heterojunctions/PROJECT-1.cif
 ```
 
-**Step 2**: Add selective dynamics
+### Optional parameters
+
+- `--out_base_dir`: Base directory to place the output folder `<input_stem>/` (default: input's parent directory)
+- `--layer1_elements`: Comma-separated element symbols for layer 1 (e.g., `Ti,O`)
+- `--layer2_elements`: Comma-separated element symbols for layer 2 (optional; inferred if not provided)
+
+### Outputs
+
+For an input file `PROJECT-1.cif`, the script creates:
+
+- Output folder: `structures/heterojunctions/PROJECT-1/`
+- A copy of the original file: `PROJECT-1.cif`
+- Layer structures (VASP): `PROJECT-1_layer1.vasp`, `PROJECT-1_layer2.vasp`, and `PROJECT-1.vasp`
+- Layer structures (CIF): `PROJECT-1_layer1.cif`, `PROJECT-1_layer2.cif`, and `PROJECT-1_combined.cif`
+
+### Important notes (position preservation)
+
+- The split-layer mode is designed for differential charge workflows: it does **not** translate, center, or wrap fractional coordinates to `[0, 1)`.
+- If `--layer1_elements/--layer2_elements` are not provided, the script tries to auto-detect common oxide/perovskite interfaces (e.g. `Ti/O` as one layer).
+
+## 4) Difference charge density from CP2K cubes (`delta_density_cube.py`)
+
+Compute difference charge density (best for heterojunctions):
+
+- **Formula**: Δρ(r) = ρ_interface − ρ_layerA − ρ_layerB
+- **Output**: `delta-density.cube` (Gaussian cube format; open directly in **VESTA**)
+
+### Example (PROJECT-1)
 
 ```bash
-python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
-    -n 2 \
-    -t 2.0 \
-    -m density_gap
+python build_heterojunctions/delta_density_cube.py \
+  --interface structures/heterojunctions/PROJECT-1/mapbi3_tio2-ELECTRON_DENSITY-1_0.cube \
+  --layerA structures/heterojunctions/PROJECT-1/mapbi3-ELECTRON_DENSITY-1_0.cube \
+  --layerB structures/heterojunctions/PROJECT-1/tio2-ELECTRON_DENSITY-1_0.cube \
+  --output structures/heterojunctions/PROJECT-1/delta-density.cube
 ```
 
-This generates `auto_interface_combined_relaxed.vasp` ready for DFT calculations.
+### Notes
 
-### Example 2: Relax More Interface Layers
+- The three input `.cube` files must share the **same volumetric grid** (grid size + origin + 3 axis lines). The script tolerates small rounding differences in header floats (common in CP2K output).
+- The implementation is **streaming** (constant memory) and suitable for very large cube files.
 
-To relax 3 layers on each side of the interface:
+## 5) Stack pre-relaxed slabs (alternative) (`stack_slabs_relax.py`)
+
+If you have pre-relaxed slab structures and want to stack them with a specific gap, you can use `stack_slabs_relax.py`:
+
+### Basic Usage
 
 ```bash
-# Step 1: Generate interface
-python build_heterojunctions/auto_interface_builder.py \
-    --a structures/perovskites/H6PbCI3N.cif \
-    --b structures/etl/TiO2.cif \
-    --miller_a 0,0,1 \
-    --miller_b 1,0,1 \
-    --vacuum 20 \
-    --sep 3.2 \
-    --strain_target A \
-    --max_atoms 300 \
-    --use_builder_interface
-
-# Step 2: Add selective dynamics with 3 layers
-python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
-    -n 3 \
-    -t 2.5
+python build_heterojunctions/stack_slabs_relax.py <slab1_file> <slab2_file> [gap_in_angstrom] [vacuum_in_angstrom] [output_file]
 ```
 
-### Example 3: Smaller System for Quick Testing
+### Parameters
+
+- `slab1_file`: Path to first slab file (bottom slab)
+- `slab2_file`: Path to second slab file (top slab)
+- `gap_in_angstrom`: Gap between two slabs in Angstroms (default: 3.0)
+- `vacuum_in_angstrom`: Total vacuum layer thickness in Angstroms (default: 20.0), split equally between bottom and top
+- `output_file`: Output filename (optional), if not specified will be auto-generated and saved to `relax_slab/` folder
+
+### Examples
+
+**Example 1**: Stack two pre-relaxed slabs with 3 Å gap and 20 Å vacuum
 
 ```bash
-# Step 1: Generate small interface
-python build_heterojunctions/auto_interface_builder.py \
-    --a structures/perovskites/H6PbCI3N.cif \
-    --b structures/etl/TiO2.cif \
-    --miller_a 0,0,1 \
-    --miller_b 1,0,1 \
-    --slab_thickness_a 5.0 \
-    --slab_thickness_b 3.0 \
-    --vacuum 15 \
-    --sep 3.0 \
-    --max_area 500 \
-    --tol 0.04 \
-    --strain_target A \
-    --max_atoms 200 \
-    --use_builder_interface
-
-# Step 2: Add selective dynamics
-python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -n 1 \
-    -t 2.0
+python build_heterojunctions/stack_slabs_relax.py \
+    relax_slab/fapbi3_slab_relax.vasp \
+    relax_slab/tio2_fa_slab_relax.vasp \
+    3.0 \
+    20.0
 ```
 
-### Example 4: Different Strain Strategy
+This will create `relax_slab/fapbi3@tio2_fa_stacked.vasp` with structure:
+- Bottom vacuum (10 Å, half of total 20 Å)
+- Slab 1 (fapbi3)
+- Gap (3 Å)
+- Slab 2 (tio2_fa)
+- Top vacuum (10 Å, half of total 20 Å)
+
+**Example 2**: Stack slabs with custom gap and vacuum
 
 ```bash
-# Step 1: Generate interface with split strain
-python build_heterojunctions/auto_interface_builder.py \
-    --a structures/perovskites/H6PbCI3N.cif \
-    --b structures/etl/TiO2.cif \
-    --miller_a 0,0,1 \
-    --miller_b 1,0,1 \
-    --vacuum 20 \
-    --sep 3.2 \
-    --strain_target both \
-    --max_atoms 300 \
-    --use_builder_interface
-
-# Step 2: Add selective dynamics
-python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -n 2 \
-    -t 2.0
+python build_heterojunctions/stack_slabs_relax.py \
+    relax_slab/fapbi3_slab_relax.vasp \
+    relax_slab/tio2_fa_slab_relax.vasp \
+    5.0 \
+    15.0
 ```
 
-### Example 5: Using Different Interface Identification Method
+**Example 3**: Stack with different spacing and custom output name
 
 ```bash
-# Step 1: Generate interface
-python build_heterojunctions/auto_interface_builder.py \
-    --a structures/perovskites/H6PbCI3N.cif \
-    --b structures/etl/TiO2.cif \
-    --miller_a 0,0,1 \
-    --miller_b 1,0,1 \
-    --vacuum 20 \
-    --sep 3.2 \
-    --strain_target A \
-    --max_atoms 300 \
-    --use_builder_interface
-
-# Step 2: Use median method for interface identification
-python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -n 2 \
-    -t 2.0 \
-    -m median
+python build_heterojunctions/stack_slabs_relax.py \
+    relax_slab/mapbi3_slab_relax.vasp \
+    relax_slab/tio2_ma_slab_relax.vasp \
+    3.2 \
+    20.0 \
+    custom_name.vasp
 ```
 
-## Understanding Selective Dynamics
+This will create `relax_slab/custom_name.vasp` (still saved in relax_slab folder)
 
-The selective dynamics feature:
+### How It Works
 
-1. **Identifies interface**: Automatically finds the boundary between two materials using density gap, median, or max gap method
-2. **Selects interface layers**: Chooses the N closest atomic layers on each side of the interface based on z-coordinates
-3. **Applies constraints**:
-   - Interface layers: `T T T` (free to relax in all directions)
-   - Bulk layers: `F F F` (fixed positions)
+1. Reads two VASP-format slab files
+2. Calculates the thickness of each slab in the z-direction
+3. Creates a structure with the following layout:
+   - Bottom vacuum layer
+   - Slab 1 (bottom slab)
+   - Gap between slabs
+   - Slab 2 (top slab)
+   - Top vacuum layer
+4. Adjusts z-coordinates of both slabs to fit in the new structure
+5. Merges atomic coordinates and element information from both slabs
+6. Updates the z-component of lattice vectors to accommodate both slabs, gap, and vacuum layers
+7. Outputs the combined VASP file
 
-This is ideal for DFT calculations where you want to:
-- Relax the interface to find equilibrium structure
-- Keep bulk layers fixed to maintain bulk properties
-- Reduce computational cost by limiting degrees of freedom
+### Output Information
 
-## Tips for Optimization
+The script displays:
+- z-coordinate range and thickness for each slab
+- Total number of atoms
+- New lattice z-direction length
+- Gap between the two slabs
 
-1. **Use `--use_builder_interface`**: Recommended for generating ordered, high-symmetry interfaces
-2. **Atom Count Control**: Use `--max_atoms` to limit system size. The script automatically adjusts thickness if needed
-3. **Selective Dynamics**: Use `-n 2` (2 layers per side) for most DFT calculations
-4. **Layer Thickness**: Adjust `-t` (typically 2.0-3.0 Å) based on your material's layer spacing
-5. **Strain Target**: 
+### Notes
+
+- Both slabs should have the same (or compatible) xy-plane lattice vectors
+- Output file uses Direct coordinates (fractional coordinates)
+- The script automatically merges elements of the same type
+- Output file includes velocity information (initialized to zero)
+- **Output location**: By default, stacked structures are saved to the `relax_slab/` folder
+- **File naming**: Output files are named as `{slab1}@{slab2}_stacked.vasp` (e.g., `fapbi3@tio2_fa_stacked.vasp`)
+- **Duplicate handling**: If a file with the same name already exists, a number suffix will be added (e.g., `fapbi3@tio2_fa_stacked_1.vasp`)
+- **Vacuum layers**: The structure includes vacuum layers at both bottom and top. The specified vacuum thickness is the total (default: 20 Å), which is split equally between bottom and top (10 Å each) to ensure proper isolation for DFT calculations
+- **Structure layout**: The final structure follows: [bottom vacuum] → [slab1] → [gap] → [slab2] → [top vacuum]
+
+### Use Cases
+
+This tool is useful when:
+- You have pre-relaxed slab structures from separate calculations
+- You want to create heterojunctions by stacking relaxed slabs
+- You need precise control over the gap between slabs
+- You want to combine slabs without going through the full interface builder workflow
+
+## Tips
+
+1. **Use `--use_builder_interface`**: Recommended for ordered, high-symmetry interfaces
+2. **Atom count control**: Use `--max_atoms` to limit system size (the script may adjust thickness if needed)
+3. **Selective dynamics**: `-n 2` (2 layers per side) is a good default for many DFT relaxations
+4. **Layer thickness**: Tune `-t` (often 2.0–3.0 Å) based on your material’s layer spacing
+5. **Strain target**:
    - `A`: Strain material A to match B (good when A is more flexible)
    - `B`: Strain material B to match A (good when B is more flexible)
-   - `both`: Split strain evenly (good for balanced systems)
+   - `both`: Split strain evenly (balanced)
 
 ## Troubleshooting
 
@@ -248,27 +456,4 @@ This is ideal for DFT calculations where you want to:
 - **Poor matching**: Try different `--miller_a` and `--miller_b` combinations
 - **Interface layers not relaxed**: Check `-n` and `-t` parameters in `fix_interface_layers.py`
 - **Interface identification failed**: Try different `-m` method (`density_gap`, `median`, or `max_gap`)
-
-## Recommended Workflow
-
-**For most DFT calculations, use this two-step workflow:**
-
-```bash
-# Step 1: Generate interface
-python build_heterojunctions/auto_interface_builder.py \
-    --a <structure_A> \
-    --b <structure_B> \
-    --miller_a <h,k,l> \
-    --miller_b <h,k,l> \
-    --use_builder_interface \
-    --max_atoms 300
-
-# Step 2: Add selective dynamics
-python build_heterojunctions/fix_interface_layers.py \
-    auto_interface_combined.vasp \
-    -o auto_interface_combined_relaxed.vasp \
-    -n 2 \
-    -t 2.0
-```
-
-This generates a structure ready for DFT relaxation calculations with interface layers relaxed and bulk layers fixed.
+- **Difference-density cube errors**: Ensure the three `.cube` files share the same grid and correspond to (interface, layerA, layerB)

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fullerene XYZ Dataset Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+    h1, h2 { margin: 0.2em 0; }
+    .meta { color: #444; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    img { max-width: 100%; border: 1px solid #ddd; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; font-size: 13px; }
+    th { background: #f5f5f5; text-align: left; }
+    .note { font-size: 13px; color: #333; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <h1>Fullerene XYZ Dataset Analysis</h1>
+  <div class="meta">Generated on: 2026-01-22</div>
+
+  <h2>Dataset overview</h2>
+  <ul>
+    <li>Total structures analyzed: <b>2487</b></li>
+    <li>Distinct sizes (C values): <b>39</b></li>
+    <li>File format: extended XYZ with explicit 3-neighbor connectivity (8 columns per atom line)</li>
+    <li>Ring counts: the report lists <i>expected</i> pentagon/hexagon counts for classical fullerenes (F5=12, F6=C/2-10). Face enumeration is not performed here.</li>
+  </ul>
+
+  <h2>Most populated sizes</h2>
+  <table>
+    <thead><tr><th>C</th><th># structures</th><th>Mean radius (Å)</th><th>Mean asphericity</th></tr></thead>
+    <tbody>
+<tr><td>C100</td><td>450</td><td>4.460</td><td>0.0160</td></tr>
+<tr><td>C52</td><td>437</td><td>3.226</td><td>0.0587</td></tr>
+<tr><td>C50</td><td>271</td><td>3.163</td><td>0.0574</td></tr>
+<tr><td>C98</td><td>259</td><td>4.414</td><td>0.0137</td></tr>
+<tr><td>C48</td><td>199</td><td>3.097</td><td>0.0562</td></tr>
+<tr><td>C96</td><td>187</td><td>4.371</td><td>0.0150</td></tr>
+<tr><td>C94</td><td>134</td><td>4.322</td><td>0.0127</td></tr>
+<tr><td>C46</td><td>116</td><td>3.029</td><td>0.0518</td></tr>
+<tr><td>C44</td><td>89</td><td>2.964</td><td>0.0557</td></tr>
+<tr><td>C92</td><td>86</td><td>4.276</td><td>0.0126</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Figures</h2>
+  <div class="grid">
+    <div>
+      <div class="note"><b>Figure 1.</b> Isomer count by size.</div>
+      <img src="isomer_count_by_C.png" alt="Isomer count by C" />
+    </div>
+    <div>
+      <div class="note"><b>Figure 2.</b> Mean radius (with std error bars) vs size.</div>
+      <img src="radius_vs_C.png" alt="Radius vs C" />
+    </div>
+    <div>
+      <div class="note"><b>Figure 3.</b> Asphericity (0 means sphere-like) vs size.</div>
+      <img src="asphericity_vs_C.png" alt="Asphericity vs C" />
+    </div>
+    <div>
+      <div class="note"><b>Figure 4.</b> Distribution of mean bond length per structure.</div>
+      <img src="bond_mean_hist.png" alt="Bond length distribution" />
+    </div>
+  </div>
+
+  <h2>Outputs</h2>
+  <ul>
+    <li><code>structures.csv</code>: per-structure metrics and sanity checks</li>
+    <li><code>by_C.csv</code>: per-C aggregated statistics</li>
+  </ul>
+
+  <div class="note">
+    Tip: For AI structure exploration, you can use <code>structures.csv</code> to select diverse seeds by size, radius, and asphericity; then add expensive labels (DFT/ML energies) via active learning.
+  </div>
+</body>
+</html>

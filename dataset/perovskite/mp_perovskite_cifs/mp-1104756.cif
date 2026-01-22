@@ -1,0 +1,40 @@
+# generated using pymatgen
+data_TlV4FeS8
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   3.30393000
+_cell_length_b   8.51072500
+_cell_length_c   8.89773930
+_cell_angle_alpha   105.51806524
+_cell_angle_beta   100.69969108
+_cell_angle_gamma   90.00000000
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   TlV4FeS8
+_chemical_formula_sum   'Tl1 V4 Fe1 S8'
+_cell_volume   236.55598552
+_cell_formula_units_Z   1
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Tl  Tl0  1  0.50000000  0.00000000  0.00000000  1
+  V  V1  1  0.71166600  0.85951800  0.42333200  1
+  V  V2  1  0.28833400  0.14048200  0.57666800  1
+  V  V3  1  0.64651900  0.50288800  0.29303800  1
+  V  V4  1  0.35348100  0.49711200  0.70696200  1
+  Fe  Fe5  1  0.00000000  0.50000000  0.00000000  1
+  S  S6  1  0.84143200  0.00761100  0.68286400  1
+  S  S7  1  0.15856800  0.99238900  0.31713600  1
+  S  S8  1  0.75846100  0.33667700  0.51692200  1
+  S  S9  1  0.24153900  0.66332300  0.48307800  1
+  S  S10  1  0.91865600  0.67384600  0.83731300  1
+  S  S11  1  0.08134400  0.32615400  0.16268700  1
+  S  S12  1  0.56827600  0.66966700  0.13655300  1
+  S  S13  1  0.43172400  0.33033300  0.86344700  1
