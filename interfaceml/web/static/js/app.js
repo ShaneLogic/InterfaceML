@@ -7,7 +7,9 @@
 const state = {
     uploadedFiles: {},
     currentTab: 'adsorbate',
-    layerMode: 'fix'  // 'fix' or 'split'
+    layerMode: 'fix',  // 'fix', 'split', or 'pdos'
+    pdosFiles: [],     // Array of PDOS file data
+    pdosCounter: 0     // Counter for unique PDOS IDs
 };
 
 // Initialize application
@@ -16,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFileUploads();
     initializeButtons();
     initializeModeSwitcher();
+    initializePdosUploads();
     checkServerHealth();
 });
 
@@ -61,6 +64,9 @@ function initializeFileUploads() {
     
     // Layers file upload
     setupFileUpload('layers-file', 'layers', displayLayersFileInfo);
+
+    // DOS uploads - only TDOS, PDOS is handled dynamically
+    setupFileUpload('tdos-file', 'tdos', displayDosFileInfo);
 }
 
 /**
@@ -168,6 +174,21 @@ function displayLayersFileInfo(fileType, data) {
 }
 
 /**
+ * Display DOS file info
+ */
+function displayDosFileInfo(fileType, data) {
+    const infoDiv = document.getElementById(`${fileType}-info`);
+    if (!infoDiv) return;
+
+    infoDiv.classList.remove('hidden');
+    infoDiv.innerHTML = `
+        <strong>${data.filename}</strong><br>
+        ${data.file_hash ? `SHA-256: ${data.file_hash}<br>` : ''}
+        ${data.parse_error ? `<span style="color: #ef4444;">Parse error: ${data.parse_error}</span>` : ''}
+    `;
+}
+
+/**
  * Mode switcher for layer management
  */
 function initializeModeSwitcher() {
@@ -184,15 +205,23 @@ function initializeModeSwitcher() {
             // Show/hide appropriate parameter sections
             const fixParams = document.getElementById('fix-mode-params');
             const splitParams = document.getElementById('split-mode-params');
+            const pdosParams = document.getElementById('pdos-mode-params');
             
             if (mode === 'fix') {
                 fixParams.classList.remove('hidden');
                 splitParams.classList.add('hidden');
+                pdosParams.classList.add('hidden');
                 state.layerMode = 'fix';
             } else if (mode === 'split') {
                 fixParams.classList.add('hidden');
                 splitParams.classList.remove('hidden');
+                pdosParams.classList.add('hidden');
                 state.layerMode = 'split';
+            } else if (mode === 'pdos') {
+                fixParams.classList.add('hidden');
+                splitParams.classList.add('hidden');
+                pdosParams.classList.remove('hidden');
+                state.layerMode = 'pdos';
             }
             
             // Clear previous results
@@ -229,11 +258,22 @@ function initializeButtons() {
     if (splitLayersBtn) {
         splitLayersBtn.addEventListener('click', splitLayers);
     }
+
+    // Generate PDOS layers button
+    const pdosLayersBtn = document.getElementById('pdos-layers-btn');
+    if (pdosLayersBtn) {
+        pdosLayersBtn.addEventListener('click', generatePdosLayers);
+    }
     
     // Compute density button
     const computeDensityBtn = document.getElementById('compute-density-btn');
     if (computeDensityBtn) {
         computeDensityBtn.addEventListener('click', computeDensity);
+    }
+
+    const plotDosBtn = document.getElementById('plot-dos-btn');
+    if (plotDosBtn) {
+        plotDosBtn.addEventListener('click', plotDos);
     }
 }
 
@@ -403,6 +443,47 @@ async function splitLayers() {
 }
 
 /**
+ * Generate PDOS layer indices and CP2K input blocks
+ */
+async function generatePdosLayers() {
+    if (!state.uploadedFiles.layers) {
+        showMessage('Please upload a structure file', 'error');
+        return;
+    }
+    const filenameValue = document.getElementById('pdos-filename').value.trim();
+
+    const data = {
+        structure_file: state.uploadedFiles.layers.filepath,
+        n_interfaces: parseInt(document.getElementById('pdos-n-interfaces').value, 10),
+        min_gap: parseFloat(document.getElementById('pdos-min-gap').value),
+        use_smart_detection: document.getElementById('pdos-smart-detection').checked,
+        pdos_filename: filenameValue === '' ? null : filenameValue,
+        nlumo: parseInt(document.getElementById('pdos-nlumo').value, 10)
+    };
+
+    try {
+        showLoading(true);
+        const response = await fetch('/api/pdos-layers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.status === 'success') {
+            displayPdosResult(result);
+        } else {
+            displayResult('layers-result', result, false);
+        }
+    } catch (error) {
+        displayResult('layers-result', { error: error.message }, false);
+    } finally {
+        showLoading(false);
+    }
+}
+
+/**
  * Display layer splitting result
  */
 function displaySplitResult(result) {
@@ -460,10 +541,283 @@ function displaySplitResult(result) {
 }
 
 /**
+ * Display PDOS layer indices and CP2K block
+ */
+function displayPdosResult(result) {
+    const resultDiv = document.getElementById('layers-result');
+    resultDiv.classList.remove('hidden', 'error');
+
+    const pdosBlock = result.cp2k_pdos || '';
+    const rangesText = result.layers
+        .map(layer => `Layer ${layer.layer_number}: ${layer.ranges_1}`)
+        .join('\n');
+
+    let layersHTML = '';
+    result.layers.forEach(layer => {
+        layersHTML += `
+            <div class="layer-item">
+                <div class="layer-header">
+                    <span class="layer-icon">🧩</span>
+                    <strong>Layer ${layer.layer_number}</strong>
+                </div>
+                <div class="layer-details">
+                    <div class="layer-type">Atoms: ${layer.n_atoms}</div>
+                    <div class="layer-stats">
+                        <span>Range: ${layer.ranges_1 || 'N/A'}</span>
+                        ${layer.z_range ? `<span>Height: ${layer.z_range}</span>` : ''}
+                    </div>
+                </div>
+                <div class="layer-actions">
+                    <button class="btn btn-secondary" data-copy-layer="${layer.layer_number}">
+                        Copy Layer LIST
+                    </button>
+                </div>
+                <div class="layer-code">${escapeHtml(layer.ranges_1)}</div>
+            </div>
+        `;
+    });
+
+    resultDiv.innerHTML = `
+        <h4>✓ PDOS Layer Indices Ready</h4>
+        <p><strong>Interfaces:</strong> ${result.n_interfaces}</p>
+        <p><strong>Layers detected:</strong> ${result.n_layers}</p>
+        <p><strong>Minimum gap:</strong> ${result.min_gap} Å</p>
+        <div class="pdos-actions">
+            <button class="btn btn-secondary" data-copy="pdos">Copy CP2K PDOS Block</button>
+            <button class="btn btn-secondary" data-copy="ranges">Copy Layer Ranges</button>
+        </div>
+        <div class="code-block" id="pdos-block">${escapeHtml(pdosBlock)}</div>
+        <div class="layers-grid">
+            ${layersHTML}
+        </div>
+    `;
+
+    const pdosButton = resultDiv.querySelector('[data-copy="pdos"]');
+    if (pdosButton) {
+        pdosButton.addEventListener('click', () => {
+            copyToClipboard(pdosBlock);
+            showMessage('CP2K PDOS block copied', 'success');
+        });
+    }
+
+    const rangesButton = resultDiv.querySelector('[data-copy="ranges"]');
+    if (rangesButton) {
+        rangesButton.addEventListener('click', () => {
+            copyToClipboard(rangesText);
+            showMessage('Layer ranges copied', 'success');
+        });
+    }
+
+    const layerButtons = resultDiv.querySelectorAll('[data-copy-layer]');
+    layerButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const layerNumber = button.getAttribute('data-copy-layer');
+            const layer = result.layers.find(l => String(l.layer_number) === String(layerNumber));
+            if (layer) {
+                copyToClipboard(layer.ranges_1 || '');
+                showMessage(`Layer ${layer.layer_number} LIST copied`, 'success');
+            }
+        });
+    });
+}
+
+/**
  * Compute density difference
  */
 async function computeDensity() {
     showMessage('Density analysis functionality coming soon', 'info');
+}
+
+/**
+ * Initialize dynamic PDOS file uploads
+ */
+function initializePdosUploads() {
+    const addPdosBtn = document.getElementById('add-pdos-btn');
+    if (addPdosBtn) {
+        addPdosBtn.addEventListener('click', addPdosUpload);
+    }
+    
+    // Add initial two PDOS uploads by default
+    addPdosUpload();
+    addPdosUpload();
+}
+
+/**
+ * Add a new PDOS upload field
+ */
+function addPdosUpload() {
+    state.pdosCounter++;
+    const pdosId = state.pdosCounter;
+    const container = document.getElementById('pdos-upload-container');
+    if (!container) return;
+    
+    const pdosItem = document.createElement('div');
+    pdosItem.className = 'pdos-upload-item';
+    pdosItem.id = `pdos-item-${pdosId}`;
+    pdosItem.innerHTML = `
+        <div class="pdos-upload-row">
+            <div class="file-upload-area pdos-upload-area" id="pdos${pdosId}-upload">
+                <input type="file" id="pdos${pdosId}-file" accept=".pdos" hidden>
+                <label for="pdos${pdosId}-file" class="file-upload-label">
+                    <span class="upload-text">Upload PDOS list ${pdosId} (.pdos)</span>
+                </label>
+            </div>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-pdos" data-pdos-id="${pdosId}" title="Remove this PDOS">
+                ✕
+            </button>
+        </div>
+        <div id="pdos${pdosId}-info" class="file-info hidden"></div>
+    `;
+    
+    container.appendChild(pdosItem);
+    
+    // Setup file upload for this new input
+    const fileInput = document.getElementById(`pdos${pdosId}-file`);
+    const uploadArea = document.getElementById(`pdos${pdosId}-upload`);
+    
+    fileInput.addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (files.length === 0) return;
+        await uploadPdosFile(files[0], pdosId);
+    });
+    
+    // Drag and drop
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = 'var(--primary-color)';
+    });
+    
+    uploadArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = '';
+    });
+    
+    uploadArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = '';
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            await uploadPdosFile(files[0], pdosId);
+        }
+    });
+    
+    // Remove button
+    const removeBtn = pdosItem.querySelector('.btn-remove-pdos');
+    removeBtn.addEventListener('click', () => removePdosUpload(pdosId));
+}
+
+/**
+ * Upload a PDOS file
+ */
+async function uploadPdosFile(file, pdosId) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('file_type', `pdos${pdosId}`);
+    
+    try {
+        showLoading(true);
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Store in pdosFiles array
+            const existing = state.pdosFiles.findIndex(p => p.id === pdosId);
+            if (existing >= 0) {
+                state.pdosFiles[existing] = { id: pdosId, ...data };
+            } else {
+                state.pdosFiles.push({ id: pdosId, ...data });
+            }
+            
+            // Also store in uploadedFiles for compatibility
+            state.uploadedFiles[`pdos${pdosId}`] = data;
+            
+            // Update display
+            displayDosFileInfo(`pdos${pdosId}`, data);
+            showMessage(`✓ ${file.name} uploaded successfully`, 'success');
+        } else {
+            showMessage(`✗ Upload failed: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        showMessage(`✗ Upload error: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+/**
+ * Remove a PDOS upload field
+ */
+function removePdosUpload(pdosId) {
+    const pdosItem = document.getElementById(`pdos-item-${pdosId}`);
+    if (pdosItem) {
+        pdosItem.remove();
+    }
+    
+    // Remove from state
+    state.pdosFiles = state.pdosFiles.filter(p => p.id !== pdosId);
+    delete state.uploadedFiles[`pdos${pdosId}`];
+}
+
+/**
+ * Plot TDOS + PDOS overlay
+ */
+async function plotDos() {
+    // Check TDOS
+    if (!state.uploadedFiles.tdos) {
+        showMessage('Please upload a TDOS file', 'error');
+        return;
+    }
+    
+    // Check PDOS files
+    if (state.pdosFiles.length === 0) {
+        showMessage('Please upload at least one PDOS file', 'error');
+        return;
+    }
+    
+    // Collect all PDOS file paths
+    const pdosFilePaths = state.pdosFiles
+        .sort((a, b) => a.id - b.id)
+        .map(p => p.filepath);
+
+    const data = {
+        tdos_file: state.uploadedFiles.tdos.filepath,
+        pdos_files: pdosFilePaths,
+        title: document.getElementById('dos-title').value.trim() || null,
+        output_name: document.getElementById('dos-output-name').value.trim() || null,
+        sigma: parseFloat(document.getElementById('dos-sigma').value),
+        grid_step: parseFloat(document.getElementById('dos-grid-step').value),
+        normalize: document.getElementById('dos-normalize').checked,
+        x_min: document.getElementById('dos-x-min').value.trim() || null,
+        x_max: document.getElementById('dos-x-max').value.trim() || null,
+        tdos_source: document.getElementById('dos-tdos-source').value,
+        pdos_scale: document.getElementById('dos-pdos-scale').value,
+        tdos_scale: document.getElementById('dos-tdos-scale').value,
+        tdos_total_atoms: document.getElementById('dos-tdos-atoms').value.trim() || null
+    };
+
+    try {
+        showLoading(true);
+        const response = await fetch('/api/plot-dos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (response.ok && result.status === 'success') {
+            displayDosResult(result);
+        } else {
+            displayResult('dos-result', result, false);
+        }
+    } catch (error) {
+        displayResult('dos-result', { error: error.message }, false);
+    } finally {
+        showLoading(false);
+    }
 }
 
 /**
@@ -488,6 +842,46 @@ function displayResult(elementId, result, success) {
             <p>${result.error || result.message || 'Unknown error'}</p>
         `;
     }
+}
+
+/**
+ * Display DOS plot result
+ */
+function displayDosResult(result) {
+    const resultDiv = document.getElementById('dos-result');
+    if (!resultDiv) return;
+
+    resultDiv.classList.remove('hidden', 'error');
+    const efText = result.ef !== null && result.ef !== undefined
+        ? `Fermi energy: ${result.ef.toFixed(4)} eV`
+        : 'Fermi energy: not found in headers';
+
+    const metaLines = [];
+    if (result.tdos_source_used) {
+        metaLines.push(`<p><strong>TDOS source:</strong> ${result.tdos_source_used}</p>`);
+    }
+    if (result.tdos_peak !== null && result.tdos_peak !== undefined) {
+        metaLines.push(`<p><strong>TDOS peak:</strong> ${result.tdos_peak} states/eV</p>`);
+    }
+    if (result.pdos_peaks) {
+        const pdosPeakStr = Object.entries(result.pdos_peaks)
+            .map(([label, peak]) => `${label}: ${peak}`)
+            .join(', ');
+        metaLines.push(`<p><strong>PDOS peaks:</strong> ${pdosPeakStr}</p>`);
+    }
+    if (result.tdos_total_atoms_used !== null && result.tdos_total_atoms_used !== undefined) {
+        metaLines.push(`<p><strong>TDOS total atoms:</strong> ${result.tdos_total_atoms_used}</p>`);
+    }
+
+    resultDiv.innerHTML = `
+        <h4>✓ DOS Plot Ready</h4>
+        <p>${efText}</p>
+        ${metaLines.join('')}
+        <p><strong>Download:</strong> <a href="${result.download_url}" download>PNG file</a></p>
+        <div class="result-image">
+            <img src="${result.image_url}" alt="DOS plot preview">
+        </div>
+    `;
 }
 
 /**
@@ -545,6 +939,45 @@ function showMessage(message, type = 'info') {
         toast.style.animation = 'slideOut 0.3s ease';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
+}
+
+/**
+ * Copy text to clipboard
+ */
+function copyToClipboard(text) {
+    if (!text) return;
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(() => {
+            fallbackCopy(text);
+        });
+    } else {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+}
+
+/**
+ * Escape HTML for safe rendering in code blocks
+ */
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 // Add animations

@@ -236,6 +236,13 @@ body {
     display: none;
 }
 
+.file-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
 /* Parameters */
 .param-grid {
     display: grid;
@@ -326,6 +333,18 @@ input[type="checkbox"] {
     font-size: 1.25rem;
 }
 
+.btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: #e5e7eb;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
 /* Result Panel */
 .result-panel {
     margin-top: 2rem;
@@ -352,6 +371,30 @@ input[type="checkbox"] {
 .result-panel p {
     color: var(--text-secondary);
     margin: 0.25rem 0;
+}
+
+.result-image {
+    margin-top: 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: white;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.result-image img {
+    width: 100%;
+    max-width: 860px;
+    height: auto;
+    border-radius: var(--radius-sm);
+}
+
+.divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 2.5rem 0;
 }
 
 .layers-grid {
@@ -390,6 +433,45 @@ input[type="checkbox"] {
 
 .layer-details {
     margin-bottom: 1rem;
+}
+
+.layer-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.layer-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.85rem;
+    background: var(--bg-secondary);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border-color);
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.pdos-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+}
+
+.code-block {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    max-height: 320px;
+    overflow-y: auto;
 }
 
 .layer-type {
@@ -534,6 +616,82 @@ input[type="checkbox"] {
     font-size: 1.25rem;
 }
 
+/* Dynamic PDOS Upload Styles */
+.dos-upload-container {
+    margin-bottom: 1rem;
+}
+
+#pdos-upload-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.pdos-upload-item {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+}
+
+.pdos-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.pdos-upload-area {
+    flex: 1;
+}
+
+.btn-remove-pdos {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pdos-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--border-color);
+}
+
+.pdos-hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+#add-pdos-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container {
@@ -563,5 +721,10 @@ input[type="checkbox"] {
 
     .mode-btn {
         min-width: auto;
+    }
+    
+    .pdos-controls {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }

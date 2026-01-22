@@ -270,16 +270,26 @@ def _score_cut_positions_environment_aware(
         carbon_jump = abs(frac_c_before - frac_c_after)
 
         # Hard guardrail: never split inside a perovskite family region.
-        # In practice, perovskites often show large *internal* gaps between
-        # inorganic framework and organic/cation sublayers; these are NOT interfaces.
-        # We only relax this if one side is clearly carbon-rich (near a fullerene).
+        #
+        # Why this is stricter than gap- or carbon-based heuristics:
+        # Perovskites commonly exhibit internal stacking/spacing (e.g. inorganic framework
+        # vs. organic/cation sublayers). Those gaps are *not* interfaces for our use case.
+        #
+        # The only time we relax this is when the local window appears to be a real
+        # perovskite↔fullerene boundary but the window is “contaminated” by a few atoms
+        # across the boundary (so both sides get classified as Perovskite).
+        frac_inorg_before = float(feat_before.get('frac_halide_metal', 0.0))
+        frac_inorg_after = float(feat_after.get('frac_halide_metal', 0.0))
+        likely_fullerene_boundary_but_misclassified = (
+            carbon_jump >= 0.35
+            and max(frac_c_before, frac_c_after) >= 0.85
+            and min(frac_inorg_before, frac_inorg_after) <= 0.02
+        )
         if (
             family_before == 'Perovskite'
             and family_after == 'Perovskite'
-            and max(frac_c_before, frac_c_after) < 0.60
-            and carbon_jump < 0.40
+            and not likely_fullerene_boundary_but_misclassified
         ):
-            # Keep it in the list but make it unselectable in practice.
             scores.append((cut_pos, -1.0e9))
             continue
 

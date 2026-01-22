@@ -216,6 +216,10 @@
                                 <span class="mode-icon">✂️</span>
                                 Split into Layers
                             </button>
+                            <button class="mode-btn" data-mode="pdos">
+                                <span class="mode-icon">🧪</span>
+                                PDOS Layer Indices (CP2K)
+                            </button>
                         </div>
                     </div>
 
@@ -288,6 +292,45 @@
                         </div>
                     </div>
 
+                    <!-- PDOS Layers Mode -->
+                    <div id="pdos-mode-params" class="form-section hidden">
+                        <h3>PDOS Layer Index Parameters</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="pdos-n-interfaces">Number of Interfaces</label>
+                                <input type="number" id="pdos-n-interfaces" class="form-control" value="1" min="1" step="1">
+                                <span class="param-hint">2 interfaces → 3 layers</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-min-gap">Minimum Gap (Å)</label>
+                                <input type="number" id="pdos-min-gap" class="form-control" value="1.5" min="0" step="0.1">
+                                <span class="param-hint">Recommended: 1.5–2.0 Å</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-smart-detection">
+                                    <input type="checkbox" id="pdos-smart-detection" checked>
+                                    Smart detection (composition-aware)
+                                </label>
+                                <span class="param-hint">Detects composition changes across gaps</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-filename">PDOS Filename</label>
+                                <input type="text" id="pdos-filename" class="form-control" placeholder="auto">
+                            </div>
+                            <div class="param-item">
+                                <label for="pdos-nlumo">NLUMO</label>
+                                <input type="number" id="pdos-nlumo" class="form-control" value="250" min="0" step="1">
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="pdos-layers-btn" class="btn btn-primary">
+                                <span class="btn-icon">🧪</span>
+                                Generate PDOS Lists
+                            </button>
+                        </div>
+                    </div>
+
                     <div id="layers-result" class="result-panel hidden"></div>
                 </div>
             </div>
@@ -333,6 +376,118 @@
                     </div>
 
                     <div id="density-result" class="result-panel hidden"></div>
+
+                    <div class="divider"></div>
+
+                    <h2 class="panel-title">TDOS + PDOS Visualization</h2>
+                    <p class="panel-description">
+                        Upload CP2K TDOS/PDOS outputs to generate a single overlay plot.
+                        Add multiple PDOS files for multi-layer interfaces.
+                    </p>
+
+                    <div class="form-section">
+                        <h3>DOS Files</h3>
+                        <div class="dos-upload-container">
+                            <!-- TDOS Upload (always shown) -->
+                            <div class="file-upload-area" id="tdos-upload">
+                                <input type="file" id="tdos-file" accept=".dos" hidden>
+                                <label for="tdos-file" class="file-upload-label">
+                                    <span class="upload-text">Upload TDOS (.dos)</span>
+                                </label>
+                            </div>
+                            <div id="tdos-info" class="file-info hidden"></div>
+                        </div>
+                        
+                        <!-- Dynamic PDOS Upload Container -->
+                        <div id="pdos-upload-container">
+                            <!-- PDOS uploads will be added here dynamically -->
+                        </div>
+                        
+                        <div class="pdos-controls">
+                            <button type="button" id="add-pdos-btn" class="btn btn-secondary btn-sm">
+                                <span class="btn-icon">➕</span> Add PDOS File
+                            </button>
+                            <span class="pdos-hint">Add one PDOS file per layer (N interfaces → N+1 layers)</span>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Plot Settings</h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="dos-title">Plot Title</label>
+                                <input type="text" id="dos-title" class="form-control" placeholder="TDOS + PDOS">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-output-name">Output Image Name</label>
+                                <input type="text" id="dos-output-name" class="form-control" placeholder="dos_tdos_pdos_overlay">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-sigma">Gaussian Broadening σ (eV)</label>
+                                <input type="number" id="dos-sigma" class="form-control" value="0.12" min="0" step="0.01">
+                                <span class="param-hint">0.08–0.20 eV recommended</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-grid-step">Energy Grid Step (eV)</label>
+                                <input type="number" id="dos-grid-step" class="form-control" value="0.02" min="0.005" step="0.005">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-x-min">Energy Min (eV)</label>
+                                <input type="number" id="dos-x-min" class="form-control" placeholder="auto" step="0.5">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-x-max">Energy Max (eV)</label>
+                                <input type="number" id="dos-x-max" class="form-control" placeholder="auto" step="0.5">
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-normalize">
+                                    <input type="checkbox" id="dos-normalize">
+                                    Normalize curves (0–1)
+                                </label>
+                                <span class="param-hint">Useful for comparing shapes</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-tdos-source">TDOS Data Source</label>
+                                <select id="dos-tdos-source" class="form-control">
+                                    <option value="auto" selected>Auto detect (recommended)</option>
+                                    <option value="occupation">Occupation / ΔE (states/eV)</option>
+                                    <option value="density">Density column (raw)</option>
+                                </select>
+                                <span class="param-hint">Use Occupation for correct DOS magnitude</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-pdos-scale">PDOS Scaling</label>
+                                <select id="dos-pdos-scale" class="form-control">
+                                    <option value="per_atom" selected>Per atom (recommended)</option>
+                                    <option value="match_tdos">Match TDOS peak</option>
+                                    <option value="none">No scaling</option>
+                                </select>
+                                <span class="param-hint">Prevents PDOS from overwhelming TDOS</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-tdos-scale">TDOS Scaling</label>
+                                <select id="dos-tdos-scale" class="form-control">
+                                    <option value="none" selected>No scaling</option>
+                                    <option value="per_atom">Per atom (total atoms)</option>
+                                </select>
+                                <span class="param-hint">Divides TDOS by total atom count</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="dos-tdos-atoms">TDOS Total Atoms</label>
+                                <input type="number" id="dos-tdos-atoms" class="form-control" placeholder="auto">
+                                <span class="param-hint">Auto uses sum of PDOS list atoms</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="plot-dos-btn" class="btn btn-primary">
+                            <span class="btn-icon">🖼️</span>
+                            Generate DOS Plot
+                        </button>
+                    </div>
+
+                    <div id="dos-result" class="result-panel hidden"></div>
                 </div>
             </div>
         </div>

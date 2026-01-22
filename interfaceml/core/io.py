@@ -210,7 +210,54 @@ def write_poscar(
         Optional comment line (first line of POSCAR). Defaults to the
         structure's composition formula.
     """
-    poscar = Poscar(structure, comment=comment, selective_dynamics=selective_dynamics)
+    # Some external tools (and even some naive writers) may produce POSCAR headers
+    # that repeat the same element symbol many times (e.g. "H C H N ..."), with a
+    # matching counts line that sums to the total atom count. While the total atom
+    # count is correct, this is non-standard and can confuse downstream tooling.
+    #
+    # To keep outputs robust and VASP-friendly, we always write a canonical header:
+    #   - element symbols are unique and ordered by first appearance
+    #   - counts are aggregated per element
+    #   - coordinate lines are grouped to match the counts
+
+    symbols = get_element_symbols(structure)
+    if len(symbols) != len(structure):
+        raise ValueError(
+            f"Structure site count mismatch: {len(structure)} sites but {len(symbols)} symbols"
+        )
+
+    # Stable unique ordering by first appearance
+    seen = set()
+    ordered_unique: List[str] = []
+    for s in symbols:
+        if s not in seen:
+            seen.add(s)
+            ordered_unique.append(s)
+
+    grouped_indices: List[int] = []
+    for s in ordered_unique:
+        grouped_indices.extend([i for i, sym in enumerate(symbols) if sym == s])
+
+    grouped_species = [symbols[i] for i in grouped_indices]
+    grouped_frac = [structure[i].frac_coords for i in grouped_indices]
+
+    grouped_sd = None
+    if selective_dynamics is not None:
+        if len(selective_dynamics) != len(structure):
+            raise ValueError(
+                "selective_dynamics length must match number of sites in structure"
+            )
+        grouped_sd = [selective_dynamics[i] for i in grouped_indices]
+
+    grouped_struct = Structure(
+        structure.lattice,
+        grouped_species,
+        grouped_frac,
+        coords_are_cartesian=False,
+        to_unit_cell=False,
+    )
+
+    poscar = Poscar(grouped_struct, comment=comment, selective_dynamics=grouped_sd)
     poscar.write_file(str(filepath))
 
 
