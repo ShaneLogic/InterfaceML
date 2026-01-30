@@ -9,7 +9,10 @@ const state = {
     currentTab: 'adsorbate',
     layerMode: 'fix',  // 'fix', 'split', or 'pdos'
     pdosFiles: [],     // Array of PDOS file data
-    pdosCounter: 0     // Counter for unique PDOS IDs
+    pdosCounter: 0,    // Counter for unique PDOS IDs
+    aiAvailable: false,
+    currentStructures: [],
+    generationHistory: []
 };
 
 // Initialize application
@@ -20,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeModeSwitcher();
     initializePdosUploads();
     checkServerHealth();
+    initializeAITab();
 });
 
 /**
@@ -1005,3 +1009,340 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+
+// ============================================
+// AI STRUCTURE GENERATION FUNCTIONALITY
+// ============================================
+
+/**
+ * Initialize AI tab functionality
+ */
+function initializeAITab() {
+    // Check AI module availability
+    checkAIAvailability();
+    
+    // Custom atom count selector
+    const numAtomsSelect = document.getElementById('ai-num-atoms');
+    const customAtomsContainer = document.getElementById('custom-atoms-container');
+    
+    if (numAtomsSelect) {
+        numAtomsSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'custom') {
+                customAtomsContainer.style.display = 'block';
+            } else {
+                customAtomsContainer.style.display = 'none';
+            }
+        });
+    }
+    
+    // Temperature slider
+    const tempSlider = document.getElementById('ai-temperature');
+    const tempOutput = document.getElementById('temp-value');
+    
+    if (tempSlider && tempOutput) {
+        tempSlider.addEventListener('input', (e) => {
+            tempOutput.textContent = e.target.value;
+        });
+    }
+    
+    // Generate button
+    const generateBtn = document.getElementById('generate-ai-btn');
+    if (generateBtn) {
+        generateBtn.addEventListener('click', handleAIGeneration);
+    }
+    
+    // Batch generate button
+    const batchBtn = document.getElementById('batch-generate-btn');
+    if (batchBtn) {
+        batchBtn.addEventListener('click', handleBatchGeneration);
+    }
+}
+
+/**
+ * Check if AI module is available
+ */
+async function checkAIAvailability() {
+    const statusDiv = document.getElementById('ai-status');
+    const contentDiv = document.getElementById('ai-content-main');
+    const unavailableDiv = document.getElementById('ai-unavailable');
+    
+    try {
+        const response = await fetch('/api/ai/info');
+        const data = await response.json();
+        
+        if (response.ok && data.available) {
+            state.aiAvailable = true;
+            
+            // Update status indicator
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="status-indicator available">
+                        <span class="status-dot"></span>
+                        <span class="status-text">AI Ready</span>
+                    </div>
+                `;
+            }
+            
+            // Show main content
+            if (contentDiv) contentDiv.style.display = 'block';
+            if (unavailableDiv) unavailableDiv.style.display = 'none';
+            
+            console.log('AI Module Info:', data);
+        } else {
+            throw new Error(data.error || 'AI module not available');
+        }
+    } catch (error) {
+        state.aiAvailable = false;
+        
+        // Update status indicator
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="status-indicator unavailable">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Unavailable</span>
+                </div>
+            `;
+        }
+        
+        // Show unavailable message
+        if (contentDiv) contentDiv.style.display = 'none';
+        if (unavailableDiv) unavailableDiv.style.display = 'block';
+        
+        console.error('AI module check failed:', error);
+    }
+}
+
+/**
+ * Handle AI structure generation
+ */
+async function handleAIGeneration() {
+    if (!state.aiAvailable) {
+        showMessage('AI module is not available', 'error');
+        return;
+    }
+    
+    // Get parameters
+    const numAtomsSelect = document.getElementById('ai-num-atoms');
+    const customAtoms = document.getElementById('ai-custom-atoms');
+    const numSamples = parseInt(document.getElementById('ai-num-samples').value);
+    const outputFormat = document.getElementById('ai-output-format').value;
+    
+    let numAtoms;
+    if (numAtomsSelect.value === 'custom') {
+        numAtoms = parseInt(customAtoms.value);
+    } else {
+        numAtoms = parseInt(numAtomsSelect.value);
+    }
+    
+    // Validate
+    if (numAtoms < 20 || numAtoms > 240) {
+        showMessage('Number of atoms must be between 20 and 240', 'error');
+        return;
+    }
+    if (numAtoms % 2 !== 0) {
+        showMessage('Number of atoms must be even', 'error');
+        return;
+    }
+    if (numSamples < 1 || numSamples > 50) {
+        showMessage('Number of samples must be between 1 and 50', 'error');
+        return;
+    }
+    
+    // Show progress
+    const progressDiv = document.getElementById('ai-progress');
+    const progressFill = document.getElementById('ai-progress-fill');
+    const progressText = document.getElementById('ai-progress-text');
+    const resultsDiv = document.getElementById('ai-results');
+    
+    progressDiv.style.display = 'block';
+    resultsDiv.classList.add('hidden');
+    progressFill.style.width = '0%';
+    progressText.textContent = `Generating ${numSamples} structures with ${numAtoms} carbon atoms...`;
+    
+    // Animate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        progress += 2;
+        if (progress > 90) progress = 90;
+        progressFill.style.width = progress + '%';
+    }, 100);
+    
+    try {
+        const response = await fetch('/api/ai/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                num_atoms: numAtoms,
+                num_samples: numSamples,
+                output_format: outputFormat
+            })
+        });
+        
+        const data = await response.json();
+        
+        clearInterval(progressInterval);
+        progressFill.style.width = '100%';
+        
+        if (response.ok && data.status === 'success') {
+            progressText.textContent = `✓ ${data.message}`;
+            state.currentStructures = data.structures || [];
+            state.generationHistory.push(data);
+            
+            // Display results
+            setTimeout(() => {
+                progressDiv.style.display = 'none';
+                displayGenerationResults(data);
+            }, 1000);
+            
+            showMessage(`Generated ${data.num_generated} structures successfully!`, 'success');
+        } else {
+            throw new Error(data.error || 'Generation failed');
+        }
+    } catch (error) {
+        clearInterval(progressInterval);
+        progressDiv.style.display = 'none';
+        showMessage(`Generation failed: ${error.message}`, 'error');
+        console.error('Generation error:', error);
+    }
+}
+
+/**
+ * Display generation results
+ */
+function displayGenerationResults(data) {
+    const resultsDiv = document.getElementById('ai-results');
+    resultsDiv.classList.remove('hidden');
+    
+    const successRate = (data.success_rate * 100).toFixed(1);
+    const avgTime = (data.generation_time / data.num_generated).toFixed(2);
+    
+    let structuresHTML = '';
+    if (data.structures && data.structures.length > 0) {
+        structuresHTML = `
+            <div class="results-grid">
+                ${data.structures.map((struct, idx) => `
+                    <div class="result-card">
+                        <div class="result-card-header">
+                            Structure ${idx + 1}
+                        </div>
+                        <div class="result-card-body">
+                            <div class="result-metric">
+                                <span class="metric-label">Filename:</span>
+                                <span class="metric-value">${struct.filename}</span>
+                            </div>
+                        </div>
+                        <div class="result-card-actions">
+                            <a href="${struct.download_url}" class="btn btn-secondary btn-sm" download>
+                                💾 Download
+                            </a>
+                            <button class="btn btn-secondary btn-sm" onclick="viewStructure(${idx})">
+                                👁️ View
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    resultsDiv.innerHTML = `
+        <h3>Generation Results</h3>
+        <div class="info-grid" style="margin-bottom: 2rem;">
+            <div class="info-item">
+                <span class="info-label">Structures Generated:</span>
+                <span class="info-value">${data.num_generated}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Success Rate:</span>
+                <span class="info-value">${successRate}%</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Total Time:</span>
+                <span class="info-value">${data.generation_time}s</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Avg Time/Structure:</span>
+                <span class="info-value">${avgTime}s</span>
+            </div>
+        </div>
+        ${structuresHTML}
+        ${data.structures.length < data.num_generated ? `
+            <p class="result-note">
+                Showing first ${data.structures.length} of ${data.num_generated} structures. 
+                All structures have been saved to the output directory.
+            </p>
+        ` : ''}
+    `;
+}
+
+/**
+ * Handle batch generation
+ */
+async function handleBatchGeneration() {
+    if (!state.aiAvailable) {
+        showMessage('AI module is not available', 'error');
+        return;
+    }
+    
+    showMessage('Batch generation feature coming soon!', 'info');
+}
+
+/**
+ * View structure in 3D viewer
+ */
+function viewStructure(index) {
+    if (index >= state.currentStructures.length) return;
+    
+    const struct = state.currentStructures[index];
+    const viewerDiv = document.getElementById('ai-viewer');
+    const viewerInfo = document.getElementById('viewer-info');
+    
+    viewerDiv.classList.remove('hidden');
+    viewerInfo.innerHTML = `
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">Filename:</span>
+                <span class="info-value">${struct.filename}</span>
+            </div>
+        </div>
+    `;
+    
+    // Scroll to viewer
+    viewerDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    showMessage('3D visualization requires additional libraries (Three.js)', 'info');
+}
+
+/**
+ * Toggle advanced settings
+ */
+function toggleAdvanced(id) {
+    const content = document.getElementById(id);
+    const header = content.previousElementSibling;
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        header.classList.add('open');
+    } else {
+        content.style.display = 'none';
+        header.classList.remove('open');
+    }
+}
+
+/**
+ * Structure viewer controls
+ */
+function rotateStructure() {
+    showMessage('Auto-rotation enabled', 'info');
+}
+
+function resetView() {
+    showMessage('View reset to default', 'info');
+}
+
+function downloadCurrent() {
+    if (state.currentStructures.length > 0) {
+        window.location.href = state.currentStructures[0].download_url;
+    }
+}

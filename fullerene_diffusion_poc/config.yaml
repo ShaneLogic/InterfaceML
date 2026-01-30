@@ -1,0 +1,75 @@
+# Configuration for Fullerene Diffusion PoC
+
+# Data paths (relative to project root)
+data:
+  xyz_dir: "../dataset/fullerenes/fullerene_xyz"
+  analysis_dir: "../dataset/fullerenes/fullerene_xyz/analysis_20260122"
+  split_csv: "../dataset/fullerenes/fullerene_xyz/analysis_20260122/ml_assets/split.csv"
+  
+  # Carbon count range for this PoC
+  C_min: 50
+  C_max: 70
+  
+  # Coordinate normalization
+  center: true          # Center at origin
+  normalize_scale: true # Normalize to unit variance
+
+# Model architecture
+model:
+  hidden_dim: 64       # Node feature dimension
+  num_layers: 3        # Number of EGNN layers
+  edge_dim: 0          # Edge feature dimension (0=no edge features)
+  
+  # Condition embedding
+  C_embed_dim: 32      # Embedding dimension for carbon count
+  
+  # Time embedding (for diffusion step t)
+  time_embed_dim: 64
+  fourier_features: 8  # Sinusoidal position encoding
+
+# Diffusion hyperparameters
+diffusion:
+  num_steps: 1000      # Total diffusion steps T
+  beta_schedule: "cosine"  # "linear" or "cosine"
+  beta_start: 0.0001
+  beta_end: 0.02
+  
+  # Sampling
+  sampling_steps: 100  # Can use fewer steps for faster generation
+  eta: 0.0            # DDIM parameter (0 = deterministic, 1 = DDPM)
+
+# Training
+training:
+  epochs: 100
+  batch_size: 8
+  learning_rate: 0.00005
+  weight_decay: 0.0001
+  
+  # Loss weights
+  lambda_bond: 0.1     # Weight for bond length constraint
+  target_bond: 1.39    # Target C-C bond length (Angstroms)
+  lambda_sphere: 0.05  # Weight for sphericity constraint (lower asphericity)
+  
+  # Optimization
+  grad_clip: 1.0
+  warmup_epochs: 5
+  
+  # Logging
+  log_interval: 10     # Log every N batches
+  eval_interval: 100   # Evaluate only at the end of 100 epochs
+  save_interval: 10    # Save checkpoint every N epochs
+
+# Evaluation
+evaluation:
+  num_samples: 50      # Number of samples to generate for evaluation
+  metrics:
+    - bond_length_mean
+    - bond_length_std
+    - rmsd_to_nearest
+    - sphericity
+    - validity
+
+# Hardware
+device: "cuda"  # "cuda" or "cpu" (auto-detect if cuda available)
+num_workers: 4   # DataLoader workers
+seed: 20260128

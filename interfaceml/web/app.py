@@ -9,6 +9,7 @@ modeling parameters.
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import time
 import secrets
@@ -37,6 +38,31 @@ try:
 except ImportError:
     CORE_AVAILABLE = False
     SPLITTING_AVAILABLE = False
+
+# Import Fullerene AI module
+fullerene_diffusion_path = Path(__file__).parent.parent.parent / 'fullerene_diffusion_poc'
+if fullerene_diffusion_path.exists():
+    sys.path.insert(0, str(fullerene_diffusion_path))
+    try:
+        from api import FullereneAPI
+        AI_MODULE_AVAILABLE = True
+        # Initialize AI API with checkpoint
+        checkpoint_path = fullerene_diffusion_path / 'checkpoints' / 'best_model.pt'
+        if checkpoint_path.exists():
+            fullerene_api = FullereneAPI(str(checkpoint_path))
+            print(f"✓ Fullerene AI module loaded: {checkpoint_path}")
+        else:
+            AI_MODULE_AVAILABLE = False
+            fullerene_api = None
+            print(f"⚠ Fullerene checkpoint not found: {checkpoint_path}")
+    except Exception as e:
+        AI_MODULE_AVAILABLE = False
+        fullerene_api = None
+        print(f"⚠ Failed to load Fullerene AI: {e}")
+else:
+    AI_MODULE_AVAILABLE = False
+    fullerene_api = None
+    print("⚠ Fullerene diffusion module not found")
 
 app = Flask(__name__)
 CORS(app)
@@ -965,6 +991,149 @@ def plot_dos():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/ai/generate', methods=['POST'])
+def ai_generate_structures():
+    """AI-powered fullerene structure generation endpoint."""
+    if not AI_MODULE_AVAILABLE or fullerene_api is None:
+        return jsonify({
+            'status': 'error',
+            'error': 'AI module not available. Please ensure fullerene_diffusion_poc is properly configured.'
+        }), 503
+    
+    try:
+        data = request.get_json() or {}
+        num_atoms = int(data.get('num_atoms', 60))
+        num_samples = int(data.get('num_samples', 5))
+        output_format = data.get('output_format', 'xyz')
+        
+        # Validate parameters
+        if num_atoms < 20 or num_atoms > 240:
+            return jsonify({'status': 'error', 'error': 'num_atoms must be between 20 and 240'}), 400
+        if num_samples < 1 or num_samples > 50:
+            return jsonify({'status': 'error', 'error': 'num_samples must be between 1 and 50'}), 400
+        
+        # Create output directory
+        output_dir = Path(app.config['UPLOAD_FOLDER']) / f'ai_generated_{secrets.token_hex(8)}'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate structures
+        start_time = time.time()
+        results = fullerene_api.generate(
+            num_atoms=num_atoms,
+            num_samples=num_samples,
+            output_dir=str(output_dir),
+            output_format=output_format
+        )
+        generation_time = time.time() - start_time
+        
+        # Read generated structures for return
+        structures = []
+        if output_format == 'xyz' and results.get('generated_files'):
+            for filepath in results['generated_files'][:10]:  # Limit to first 10 for response
+                try:
+                    with open(filepath, 'r') as f:
+                        structures.append({
+                            'filename': Path(filepath).name,
+                            'content': f.read(),
+                            'download_url': f"/api/download/{Path(filepath).name}"
+                        })
+                except Exception as e:
+                    print(f"Error reading {filepath}: {e}")
+        
+        return jsonify({
+            'status': 'success',
+            'num_generated': results.get('num_generated', 0),
+            'success_rate': results.get('success_rate', 0.0),
+            'generation_time': round(generation_time, 2),
+            'output_dir': str(output_dir.relative_to(app.config['UPLOAD_FOLDER'])),
+            'structures': structures,
+            'message': f"Generated {results.get('num_generated', 0)} {output_format.upper()} structures in {generation_time:.1f}s"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/evaluate', methods=['POST'])
+def ai_evaluate_structures():
+    """AI evaluation of generated structures."""
+    if not AI_MODULE_AVAILABLE or fullerene_api is None:
+        return jsonify({
+            'status': 'error',
+            'error': 'AI module not available'
+        }), 503
+    
+    try:
+        data = request.get_json() or {}
+        generated_dir = data.get('generated_dir')
+        
+        if not generated_dir:
+            return jsonify({'status': 'error', 'error': 'generated_dir is required'}), 400
+        
+        # Resolve path relative to upload folder
+        gen_path = Path(app.config['UPLOAD_FOLDER']) / generated_dir
+        if not gen_path.exists():
+            return jsonify({'status': 'error', 'error': 'Generated directory not found'}), 404
+        
+        # Reference directory (optional)
+        ref_dir = fullerene_diffusion_path / 'dataset' / 'fullerenes' / 'fullerene_xyz'
+        if not ref_dir.exists():
+            ref_dir = None
+        
+        # Output directory for evaluation results
+        eval_output = Path(app.config['UPLOAD_FOLDER']) / f'evaluation_{secrets.token_hex(8)}'
+        eval_output.mkdir(parents=True, exist_ok=True)
+        
+        # Run evaluation
+        results = fullerene_api.evaluate(
+            generated_dir=str(gen_path),
+            reference_dir=str(ref_dir) if ref_dir else None,
+            output_dir=str(eval_output)
+        )
+        
+        # Find generated plot
+        plot_files = list(eval_output.glob('evaluation_*.png'))
+        plot_url = f"/api/download/{plot_files[0].name}" if plot_files else None
+        
+        return jsonify({
+            'status': 'success',
+            'metrics': results.get('metrics', {}),
+            'plot_url': plot_url,
+            'evaluation_dir': str(eval_output.relative_to(app.config['UPLOAD_FOLDER']))
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/info', methods=['GET'])
+def ai_model_info():
+    """Get AI model information."""
+    if not AI_MODULE_AVAILABLE or fullerene_api is None:
+        return jsonify({
+            'status': 'error',
+            'available': False,
+            'error': 'AI module not available'
+        }), 503
+    
+    try:
+        info = fullerene_api.get_model_info()
+        info['available'] = True
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'available': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/download/<filename>')
 def download_file(filename):
     """Download a generated file."""
@@ -988,10 +1157,14 @@ def main():
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
     args = parser.parse_args()
     
-    print("Starting InterfaceML Web Server...")
-    print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
-    print(f"Core modules available: {CORE_AVAILABLE}")
-    print(f"\nOpen your browser and navigate to: http://localhost:{args.port}")
+    print("\n" + "="*60)
+    print("  InterfaceML - Professional Heterojunction Modeling Platform")
+    print("="*60)
+    print(f"\n📁 Upload folder: {app.config['UPLOAD_FOLDER']}")
+    print(f"⚙️  Core modules: {'✓ Available' if CORE_AVAILABLE else '✗ Not available'}")
+    print(f"🤖 AI Generation: {'✓ Available' if AI_MODULE_AVAILABLE else '✗ Not available'}")
+    print(f"\n🌐 Server: http://localhost:{args.port}")
+    print("\n" + "="*60 + "\n")
     app.run(debug=True, host=args.host, port=args.port)
 
 

@@ -34,6 +34,10 @@
                     <span class="tab-icon">⚡</span>
                     Interface Builder
                 </button>
+                <button class="tab-btn" data-tab="ai-generation">
+                    <span class="tab-icon">🤖</span>
+                    AI Structure Generation
+                </button>
                 <button class="tab-btn" data-tab="layers">
                     <span class="tab-icon">📐</span>
                     Layer Fixing
@@ -195,7 +199,188 @@
                     <div id="interface-result" class="result-panel hidden"></div>
                 </div>
             </div>
+            <!-- Tab Content: AI Structure Generation -->
+            <div id="ai-generation" class="tab-content">
+                <div class="panel">
+                    <div class="ai-header">
+                        <div>
+                            <h2 class="panel-title">
+                                <span class="ai-badge">AI</span>
+                                Fullerene Structure Generation
+                            </h2>
+                            <p class="panel-description">
+                                Generate fullerene molecular structures using deep learning.
+                                Powered by Enhanced Equivariant Graph Neural Networks (EGNN) and Diffusion Models.
+                            </p>
+                        </div>
+                        <div class="ai-status" id="ai-status">
+                            <div class="status-indicator checking">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Checking...</span>
+                            </div>
+                        </div>
+                    </div>
 
+                    <div class="ai-content" id="ai-content-main">
+                        <!-- Generation Parameters -->
+                        <div class="form-section">
+                            <h3>Generation Parameters</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="ai-num-atoms">Carbon Atoms</label>
+                                    <select id="ai-num-atoms" class="form-control">
+                                        <option value="60" selected>C60 (Buckminsterfullerene)</option>
+                                        <option value="70">C70 (Rugby ball)</option>
+                                        <option value="80">C80</option>
+                                        <option value="84">C84</option>
+                                        <option value="100">C100</option>
+                                        <option value="custom">Custom...</option>
+                                    </select>
+                                </div>
+                                <div class="param-item" id="custom-atoms-container" style="display: none;">
+                                    <label for="ai-custom-atoms">Custom Atom Count</label>
+                                    <input type="number" id="ai-custom-atoms" class="form-control" 
+                                           value="60" min="20" max="240" step="2">
+                                    <span class="param-hint">Must be even, 20-240 atoms</span>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-num-samples">Number of Structures</label>
+                                    <input type="number" id="ai-num-samples" class="form-control" 
+                                           value="5" min="1" max="50">
+                                    <span class="param-hint">1-50 structures per generation</span>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-output-format">Output Format</label>
+                                    <select id="ai-output-format" class="form-control">
+                                        <option value="xyz" selected>XYZ (Standard)</option>
+                                        <option value="json">JSON (with metadata)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Settings (Collapsible) -->
+                        <div class="form-section">
+                            <div class="collapsible-header" onclick="toggleAdvanced('ai-advanced')">
+                                <h3>Advanced Settings</h3>
+                                <span class="collapse-icon">▼</span>
+                            </div>
+                            <div id="ai-advanced" class="collapsible-content" style="display: none;">
+                                <div class="param-grid">
+                                    <div class="param-item">
+                                        <label for="ai-temperature">
+                                            Sampling Temperature
+                                            <span class="info-icon" title="Higher = more diverse, Lower = more stable">ⓘ</span>
+                                        </label>
+                                        <input type="range" id="ai-temperature" 
+                                               min="0.5" max="1.5" step="0.1" value="1.0">
+                                        <output id="temp-value">1.0</output>
+                                    </div>
+                                    <div class="param-item">
+                                        <label>
+                                            <input type="checkbox" id="ai-validate" checked>
+                                            Validate connectivity
+                                        </label>
+                                        <span class="param-hint">Reject invalid structures</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Generation Controls -->
+                        <div class="action-bar">
+                            <button id="generate-ai-btn" class="btn btn-primary btn-lg">
+                                <span class="btn-icon">✨</span>
+                                Generate Structures
+                            </button>
+                            <button id="batch-generate-btn" class="btn btn-secondary btn-lg">
+                                <span class="btn-icon">📦</span>
+                                Batch Generate
+                            </button>
+                        </div>
+
+                        <!-- Progress Indicator -->
+                        <div id="ai-progress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="ai-progress-fill"></div>
+                            </div>
+                            <p class="progress-text" id="ai-progress-text">Generating structures...</p>
+                        </div>
+
+                        <!-- Results Display -->
+                        <div id="ai-results" class="result-panel hidden">
+                            <!-- Results will be populated here -->
+                        </div>
+
+                        <!-- Structure Viewer -->
+                        <div id="ai-viewer" class="structure-viewer hidden">
+                            <div class="viewer-header">
+                                <h3>Structure Preview</h3>
+                                <div class="viewer-controls">
+                                    <button class="viewer-btn" onclick="rotateStructure()" title="Auto-rotate">
+                                        🔄
+                                    </button>
+                                    <button class="viewer-btn" onclick="resetView()" title="Reset view">
+                                        🏠
+                                    </button>
+                                    <button class="viewer-btn" onclick="downloadCurrent()" title="Download">
+                                        💾
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="viewer-canvas" id="viewer-canvas">
+                                <!-- 3D visualization will be rendered here -->
+                                <canvas id="structure-canvas" width="800" height="600"></canvas>
+                            </div>
+                            <div class="viewer-info" id="viewer-info">
+                                <!-- Structure info will be displayed here -->
+                            </div>
+                        </div>
+
+                        <!-- Model Information -->
+                        <div class="info-panel">
+                            <h4>About the AI Model</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">Architecture:</span>
+                                    <span class="info-value">Enhanced EGNN + DDPM</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Training Data:</span>
+                                    <span class="info-value">Fullerene Database (C60-C100)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Features:</span>
+                                    <span class="info-value">SE(3) Equivariant, Attention, Residuals</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Generation Speed:</span>
+                                    <span class="info-value">~1 structure/second</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Not Available Message -->
+                    <div id="ai-unavailable" class="unavailable-panel" style="display: none;">
+                        <div class="unavailable-icon">⚠️</div>
+                        <h3>AI Module Unavailable</h3>
+                        <p>The Fullerene AI generation module is not currently available.</p>
+                        <div class="unavailable-details">
+                            <h4>Possible reasons:</h4>
+                            <ul>
+                                <li>Model checkpoint not found</li>
+                                <li>Required dependencies missing</li>
+                                <li>Configuration error</li>
+                            </ul>
+                            <p class="help-text">
+                                Please check server logs or contact your administrator.
+                                Model should be located at: <code>fullerene_diffusion_poc/checkpoints/best_model.pt</code>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- Tab Content: Layer Fixing -->
             <div id="layers" class="tab-content">
                 <div class="panel">
