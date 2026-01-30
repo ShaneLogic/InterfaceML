@@ -141,18 +141,21 @@ def generate_samples(
                     batch,
                 )
                 
-                # DDPM reverse step using posterior q(x_{t-1} | x_t, x_0)
-                # First, predict x_0 from x_t
+                # Predict x_0 from noisy x_t
                 sqrt_alpha_bar_t = scheduler.sqrt_alphas_cumprod[t]
                 sqrt_one_minus_alpha_bar_t = scheduler.sqrt_one_minus_alphas_cumprod[t]
                 x_0_pred = (pos_t - sqrt_one_minus_alpha_bar_t * noise_pred) / sqrt_alpha_bar_t
                 
-                # Adaptive clipping based on timestep (stricter at later steps)
-                # Training data has std≈1, use dynamic range based on remaining noise
-                # At t=999: more noise remains, use wider range
-                # At t=0: almost clean, use tighter range
-                clip_factor = 3.0 + 2.0 * (t.float() / scheduler.num_steps)
-                x_0_pred = torch.clamp(x_0_pred, -clip_factor, clip_factor)
+                # REMOVED HARD CLIPPING - Let model learn natural coordinate ranges
+                # The model should output reasonable coordinates without artificial bounds
+                # Natural C60 structure has radius ~3.5Å, coordinates in [-4, 4] range
+                # Previous hard clip at ±3.0 was preventing proper structure formation
+                
+                # Only apply SOFT limiting at very extreme values to prevent numerical issues
+                # Use tanh-based soft clipping instead of hard clamp
+                # This preserves gradient flow and allows natural coordinate distributions
+                max_reasonable = 8.0  # Much larger than physical C60 (~7Å diameter)
+                x_0_pred = max_reasonable * torch.tanh(x_0_pred / max_reasonable)
                 
                 # Compute posterior mean using precomputed coefficients
                 coef1 = scheduler.posterior_mean_coef1[t]

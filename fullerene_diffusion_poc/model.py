@@ -439,16 +439,16 @@ def sphericity_loss(
     """
     Sphericity loss: encourages structures to be spherical (low asphericity).
     
-    Computes asphericity from gyration tensor and penalizes deviation from perfect sphere.
-    Asphericity = λ1 - 0.5(λ2 + λ3) where λ1 ≥ λ2 ≥ λ3 are eigenvalues.
-    For perfect sphere: λ1 = λ2 = λ3 ⇒ asphericity = 0
+    Computes normalized asphericity from gyration tensor.
+    Uses relative asphericity = (λ1 - λ3) / (λ1 + λ2 + λ3) 
+    Range: [0, 1] where 0 = perfect sphere, 1 = maximally elongated
     
     Args:
         pos: Coordinates [N, 3]
         batch: Batch assignment [N]
     
     Returns:
-        loss: Mean asphericity across batch
+        loss: Mean relative asphericity across batch (0-1 range)
     """
     batch_size = batch.max().item() + 1
     asphericities = []
@@ -464,11 +464,16 @@ def sphericity_loss(
         # Gyration tensor: S = (1/N) X^T X
         S = torch.mm(centered.t(), centered) / centered.size(0)  # [3, 3]
         
-        # Compute eigenvalues (asphericity is invariant to rotation)
+        # Compute eigenvalues (sorted ascending: λ1 ≤ λ2 ≤ λ3)
         eigvals = torch.linalg.eigvalsh(S)  # [3], sorted ascending
+        eigvals = torch.clamp(eigvals, min=1e-8)  # Avoid division by zero
         
-        # Asphericity: λ_max - 0.5(λ_mid + λ_min)
-        asphericity = eigvals[2] - 0.5 * (eigvals[1] + eigvals[0])
+        # Relative asphericity (normalized by total inertia)
+        # Perfect sphere: λ1 = λ2 = λ3, asphericity = 0
+        # Maximally elongated: λ1 = λ2 = 0, asphericity → 1
+        trace = eigvals.sum()
+        asphericity = (eigvals[2] - eigvals[0]) / (trace + 1e-8)
+        
         asphericities.append(asphericity)
     
     return torch.mean(torch.stack(asphericities))

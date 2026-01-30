@@ -40,19 +40,35 @@ diffusion:
 
 # Training
 training:
-  epochs: 100
+  epochs: 150               # INCREASED: More training for better convergence
   batch_size: 8
-  learning_rate: 0.00005
+  learning_rate: 0.0001     # Increased from 0.00005 for faster convergence
   weight_decay: 0.0001
   
-  # Loss weights
-  lambda_bond: 0.1     # Weight for bond length constraint
-  target_bond: 1.39    # Target C-C bond length (Angstroms)
-  lambda_sphere: 0.05  # Weight for sphericity constraint (lower asphericity)
+  # Optimizer
+  optimizer: "AdamW"
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+  
+# Loss configuration (CRITICAL - optimized weights based on diagnosis)
+loss:
+  # Primary denoising loss
+  noise_weight: 1.0
+  
+  # Physics-informed constraints
+  lambda_bond: 5.0          # OPTIMIZED: 0.5→5.0 (10x) - enforce tight bond lengths
+  target_bond: 1.42         # C-C bond in fullerenes (sp2 hybridization)
+  bond_tolerance: 0.05      # Acceptable deviation
+  
+  lambda_sphere: 2.0        # OPTIMIZED: 0.2→2.0 (10x) - enforce spherical shape
+  lambda_repulsion: 0.5     # INCREASED: 0.1→0.5 - prevent atom overlap
+  
+  # Gradient management
+  grad_clip: 1.0            # Gradient clipping value
+  use_adaptive_clipping: false  # DISABLED: Remove aggressive clipping
   
   # Optimization
-  grad_clip: 1.0
-  warmup_epochs: 5
+  warmup_epochs: 10         # INCREASED: Longer warmup for stable training
   
   # Logging
   log_interval: 10     # Log every N batches

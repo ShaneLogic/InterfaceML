@@ -1,0 +1,80 @@
+{
+  "summary": {
+    "mean_quality": 0.5,
+    "std_quality": 0.0,
+    "max_quality": 0.5,
+    "min_quality": 0.5
+  },
+  "individual_metrics": [
+    {
+      "coord_range": 6.582752227783203,
+      "coord_std": 2.3639369010925293,
+      "min_distance": 0.14260402794280372,
+      "mean_distance": 5.460156259143993,
+      "bond_distances_mean": 1.1294260609095015,
+      "bond_distances_std": 0.6737183557936625,
+      "ideal_bonds": 17.0,
+      "close_contacts": 56.0,
+      "radius_gyration": 4.094459056854248,
+      "is_collapsed": false,
+      "is_exploded": false,
+      "quality_score": 0.5
+    },
+    {
+      "coord_range": 6.548287868499756,
+      "coord_std": 2.366809368133545,
+      "min_distance": 0.18863797300414453,
+      "mean_distance": 5.467687979150382,
+      "bond_distances_mean": 1.0826998070981568,
+      "bond_distances_std": 0.5931280692135059,
+      "ideal_bonds": 19.0,
+      "close_contacts": 51.0,
+      "radius_gyration": 4.0994343757629395,
+      "is_collapsed": false,
+      "is_exploded": false,
+      "quality_score": 0.5
+    },
+    {
+      "coord_range": 6.868639945983887,
+      "coord_std": 2.419771432876587,
+      "min_distance": 0.22639025309845157,
+      "mean_distance": 5.584020351421775,
+      "bond_distances_mean": 1.0981941255703693,
+      "bond_distances_std": 0.5581114670643167,
+      "ideal_bonds": 13.0,
+      "close_contacts": 57.0,
+      "radius_gyration": 4.191166877746582,
+      "is_collapsed": false,
+      "is_exploded": false,
+      "quality_score": 0.5
+    },
+    {
+      "coord_range": 6.490328788757324,
+      "coord_std": 2.3891189098358154,
+      "min_distance": 0.15457385776201132,
+      "mean_distance": 5.529066586121257,
+      "bond_distances_mean": 1.12973089558756,
+      "bond_distances_std": 0.5817015690896374,
+      "ideal_bonds": 12.0,
+      "close_contacts": 50.0,
+      "radius_gyration": 4.138075351715088,
+      "is_collapsed": false,
+      "is_exploded": false,
+      "quality_score": 0.5
+    },
+    {
+      "coord_range": 6.953494071960449,
+      "coord_std": 2.491309881210327,
+      "min_distance": 0.10628134323985025,
+      "mean_distance": 5.747431504486542,
+      "bond_distances_mean": 0.9006498932713833,
+      "bond_distances_std": 0.6095724613210888,
+      "ideal_bonds": 16.0,
+      "close_contacts": 75.0,
+      "radius_gyration": 4.315075397491455,
+      "is_collapsed": false,
+      "is_exploded": false,
+      "quality_score": 0.5
+    }
+  ]
+}

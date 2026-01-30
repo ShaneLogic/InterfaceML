@@ -80,6 +80,7 @@ class Trainer:
         self.epoch = 0
         self.best_val_loss = float('inf')
         self.train_config = train_config
+        self.loss_config = config.get('loss', {})  # Add loss config
         
         # Create checkpoint directory
         self.ckpt_dir = Path('checkpoints')
@@ -126,8 +127,8 @@ class Trainer:
             noise_loss = nn.functional.mse_loss(noise_pred, noise)
             
             # Physics-informed losses
-            lambda_bond = self.train_config.get('lambda_bond', 0.0)
-            lambda_sphere = self.train_config.get('lambda_sphere', 0.0)
+            lambda_bond = self.loss_config.get('lambda_bond', 0.0)
+            lambda_sphere = self.loss_config.get('lambda_sphere', 0.0)
             
             b_loss = torch.tensor(0.0, device=self.device)
             s_loss = torch.tensor(0.0, device=self.device)
@@ -143,7 +144,7 @@ class Trainer:
                     b_loss = bond_length_loss(
                         pos_pred,
                         batch.edge_index,
-                        target_length=self.train_config.get('target_bond', 1.39),
+                        target_length=self.loss_config.get('target_bond', 1.39),
                     )
                 
                 if lambda_sphere > 0:
@@ -156,10 +157,10 @@ class Trainer:
             loss.backward()
             
             # Gradient clipping
-            if self.train_config.get('grad_clip', 0) > 0:
+            if self.loss_config.get('grad_clip', 0) > 0:
                 nn.utils.clip_grad_norm_(
                     self.model.parameters(),
-                    self.train_config['grad_clip']
+                    self.loss_config['grad_clip']
                 )
             
             self.optimizer.step()
