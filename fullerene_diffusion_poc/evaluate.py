@@ -53,6 +53,9 @@ def parse_xyz_file(filepath: Path) -> Tuple[np.ndarray, List[Tuple[int, int]]]:
     positions = []
     edges = []
     
+    raw_indices = []
+    raw_neighbors = []
+
     for i in range(2, 2 + num_atoms):
         parts = lines[i].strip().split()
         # Format: element x y z index nb1 nb2 nb3
@@ -61,9 +64,29 @@ def parse_xyz_file(filepath: Path) -> Tuple[np.ndarray, List[Tuple[int, int]]]:
         
         if len(parts) >= 8:
             idx = int(parts[4])
-            for nb in [int(parts[5]), int(parts[6]), int(parts[7])]:
-                if nb >= 0:  # Valid neighbor
-                    edges.append((idx, nb))
+            nbs = [int(parts[5]), int(parts[6]), int(parts[7])]
+            raw_indices.append(idx)
+            raw_neighbors.append(nbs)
+
+    # Detect 1-based vs 0-based indexing (dataset is 1-based)
+    # Heuristic: if indices span [1..N] treat as 1-based.
+    one_based = False
+    if raw_indices:
+        max_idx = max(raw_indices)
+        min_idx = min(raw_indices)
+        if min_idx == 1 and max_idx == num_atoms:
+            one_based = True
+
+    for idx, nbs in zip(raw_indices, raw_neighbors):
+        if one_based:
+            idx0 = idx - 1
+            nbs0 = [nb - 1 for nb in nbs]
+        else:
+            idx0 = idx
+            nbs0 = nbs
+        for nb0 in nbs0:
+            if 0 <= nb0 < num_atoms and nb0 != idx0:
+                edges.append((idx0, nb0))
     
     return np.array(positions), edges
 

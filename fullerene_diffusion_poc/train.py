@@ -24,6 +24,9 @@ from tqdm import tqdm
 from dataset import get_dataloaders
 from diffusion_utils import DiffusionScheduler
 from model import FullereneDiffusionModel, bond_length_loss, sphericity_loss
+# IMPROVEMENT: Use v2 time-conditioned losses only
+from topology_loss_v2 import combined_physics_loss_v2
+from train_topology_gnn import train_topology_gnn
 
 
 class Trainer:
@@ -83,8 +86,9 @@ class Trainer:
         self.loss_config = config.get('loss', {})  # Add loss config
         
         # Create checkpoint directory
-        self.ckpt_dir = Path('checkpoints')
-        self.ckpt_dir.mkdir(exist_ok=True)
+        ckpt_dir = self.train_config.get('checkpoint_dir', 'checkpoints')
+        self.ckpt_dir = Path(ckpt_dir)
+        self.ckpt_dir.mkdir(parents=True, exist_ok=True)
     
     def train_epoch(self) -> dict:
         """Train for one epoch."""
@@ -100,12 +104,28 @@ class Trainer:
         for batch in pbar:
             batch = batch.to(self.device)
             
-            # Sample random timesteps
+            # Sample timesteps (bias toward low-noise for geometry constraints)
             batch_size = batch.C.size(0)
-            t = torch.randint(
-                0, self.scheduler.num_steps, (batch_size,),
-                device=self.device, dtype=torch.long
-            )
+            low_t_fraction = self.loss_config.get('low_t_fraction', 0.5)
+            low_t_max = int(self.loss_config.get('low_t_max', 200))
+            low_t_max = max(1, min(low_t_max, self.scheduler.num_steps - 1))
+
+            if low_t_fraction > 0:
+                t_uniform = torch.randint(
+                    0, self.scheduler.num_steps, (batch_size,),
+                    device=self.device, dtype=torch.long
+                )
+                t_low = torch.randint(
+                    0, low_t_max + 1, (batch_size,),
+                    device=self.device, dtype=torch.long
+                )
+                choose_low = torch.rand(batch_size, device=self.device) < low_t_fraction
+                t = torch.where(choose_low, t_low, t_uniform)
+            else:
+                t = torch.randint(
+                    0, self.scheduler.num_steps, (batch_size,),
+                    device=self.device, dtype=torch.long
+                )
             
             # Forward diffusion: add noise manually for PyG batch format
             noise = torch.randn_like(batch.pos)
@@ -126,31 +146,59 @@ class Trainer:
             # Compute losses
             noise_loss = nn.functional.mse_loss(noise_pred, noise)
             
-            # Physics-informed losses
+            # Physics-informed losses with TIME-CONDITIONING (v2)
             lambda_bond = self.loss_config.get('lambda_bond', 0.0)
             lambda_sphere = self.loss_config.get('lambda_sphere', 0.0)
+            lambda_topo = self.loss_config.get('lambda_topology', 0.0)
+            lambda_conn = self.loss_config.get('lambda_connectivity', 0.0)
+            lambda_repulsion = self.loss_config.get('lambda_repulsion', 0.0)
+
+            target_bond_angstrom = self.loss_config.get('target_bond', 1.42)
+            bond_tolerance_angstrom = self.loss_config.get('bond_tolerance', 0.30)
+            radius_coeff = self.loss_config.get('radius_coeff', 0.45)
+            repulsion_min_dist_angstrom = self.loss_config.get('repulsion_min_dist', 1.60)
             
             b_loss = torch.tensor(0.0, device=self.device)
             s_loss = torch.tensor(0.0, device=self.device)
+            t_loss = torch.tensor(0.0, device=self.device)
+            c_loss = torch.tensor(0.0, device=self.device)
             
-            if lambda_bond > 0 or lambda_sphere > 0:
+            if lambda_bond > 0 or lambda_sphere > 0 or lambda_topo > 0 or lambda_conn > 0:
                 # Predict clean coordinates
                 alpha_bar = self.scheduler.alphas_cumprod[t[batch.batch]].view(-1, 1)
                 sqrt_alpha_bar = torch.sqrt(alpha_bar)
                 sqrt_one_minus_alpha_bar = torch.sqrt(1 - alpha_bar)
                 pos_pred = (pos_noisy - sqrt_one_minus_alpha_bar * noise_pred) / sqrt_alpha_bar
                 
-                if lambda_bond > 0:
-                    b_loss = bond_length_loss(
-                        pos_pred,
-                        batch.edge_index,
-                        target_length=self.loss_config.get('target_bond', 1.39),
-                    )
+                # Use v2 time-conditioned physics losses
+                # This automatically reduces constraint strength at high noise
+                physics_losses = combined_physics_loss_v2(
+                    pos_pred,
+                    batch.edge_index,
+                    batch.batch,
+                    batch.C,
+                    t,  # Pass timesteps for time-weighting
+                    lambda_bond=lambda_bond,
+                    lambda_conn=lambda_conn,
+                    lambda_topo=lambda_topo,
+                    lambda_repulsion=lambda_repulsion,
+                    target_bond_angstrom=target_bond_angstrom,
+                    bond_tolerance_angstrom=bond_tolerance_angstrom,
+                    radius_coeff=radius_coeff,
+                    repulsion_min_dist_angstrom=repulsion_min_dist_angstrom,
+                )
                 
+                b_loss = physics_losses['bond']
+                c_loss = physics_losses['connectivity']
+                t_loss = physics_losses['topology']
+                
+                # Sphere loss (not time-conditioned, works at all noise levels)
                 if lambda_sphere > 0:
-                    s_loss = sphericity_loss(pos_pred, batch.batch)
+                    # Training coordinates are normalized to mean radius ~ 1.0.
+                    s_loss = sphericity_loss(pos_pred, batch.batch, target_radius=1.0)
             
-            loss = noise_loss + lambda_bond * b_loss + lambda_sphere * s_loss
+            # Total loss: noise reconstruction + weighted physics constraints
+            loss = noise_loss + lambda_sphere * s_loss + physics_losses.get('total_physics', 0.0)
             
             # Backward
             self.optimizer.zero_grad()
@@ -178,6 +226,8 @@ class Trainer:
                 'noise': f"{noise_loss.item():.4f}",
                 'bond': f"{b_loss.item():.4f}",
                 'sphere': f"{s_loss.item():.4f}",
+                'topo': f"{t_loss.item():.4f}",
+                'conn': f"{c_loss.item():.4f}",
             })
         
         return {
@@ -292,6 +342,31 @@ def main():
     # Load config
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
+
+    # Resolve data paths relative to config file
+    config_dir = Path(args.config).resolve().parent
+    data_cfg = config.get('data', {})
+    for key in ['xyz_dir', 'analysis_dir', 'split_csv']:
+        path_val = data_cfg.get(key)
+        if path_val and not Path(path_val).is_absolute():
+            data_cfg[key] = str((config_dir / path_val).resolve())
+    config['data'] = data_cfg
+
+    # Resolve checkpoint paths relative to config file
+    training_cfg = config.get('training', {})
+    ckpt_dir = training_cfg.get('checkpoint_dir')
+    if not ckpt_dir:
+        ckpt_dir = str((config_dir / 'checkpoints').resolve())
+        training_cfg['checkpoint_dir'] = ckpt_dir
+    elif not Path(ckpt_dir).is_absolute():
+        training_cfg['checkpoint_dir'] = str((config_dir / ckpt_dir).resolve())
+    config['training'] = training_cfg
+
+    topo_cfg = config.get('topology_gnn', {})
+    topo_ckpt = topo_cfg.get('checkpoint_path')
+    if topo_ckpt:
+        topo_cfg['checkpoint_path'] = str((config_dir / topo_ckpt).resolve()) if not Path(topo_ckpt).is_absolute() else topo_ckpt
+        config['topology_gnn'] = topo_cfg
     
     # Override epochs if specified
     if args.epochs:
@@ -307,6 +382,12 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
     
+    # Optional: train topology GNN before diffusion
+    topo_cfg = config.get('topology_gnn', {})
+    if topo_cfg.get('enabled', False) and topo_cfg.get('train_before_diffusion', True):
+        print("Training topology GNN before diffusion...")
+        train_topology_gnn(config, device)
+
     # Create trainer
     trainer = Trainer(config, device)
     

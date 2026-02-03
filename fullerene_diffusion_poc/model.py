@@ -435,23 +435,38 @@ def bond_length_loss(
 def sphericity_loss(
     pos: torch.Tensor,
     batch: torch.Tensor,
+    target_radius: float = 1.0,
+    radius_weight: float = 0.5,
 ) -> torch.Tensor:
     """
-    Sphericity loss: encourages structures to be spherical (low asphericity).
+    ENHANCED Sphericity loss: encourages compact spherical structures.
+    
+    v3 improvements (fixes fragmented structures):
+    1. Asphericity penalty (shape should be spherical)
+    2. Radius penalty (atoms should cluster at target radius)
+    3. Compactness penalty (atoms should not be scattered)
     
     Computes normalized asphericity from gyration tensor.
     Uses relative asphericity = (λ1 - λ3) / (λ1 + λ2 + λ3) 
     Range: [0, 1] where 0 = perfect sphere, 1 = maximally elongated
     
+    Notes:
+        The default training pipeline normalizes each molecule so that the mean
+        atomic radius is ~1.0 (see dataset.py radius normalization). Therefore
+        the *normalized-space* target radius is 1.0.
+
     Args:
-        pos: Coordinates [N, 3]
+        pos: Coordinates [N, 3] (normalized)
         batch: Batch assignment [N]
+        target_radius: Expected radius in the same units as pos (default=1.0)
+        radius_weight: Weight for radius penalty vs asphericity
     
     Returns:
-        loss: Mean relative asphericity across batch (0-1 range)
+        loss: Combined sphericity + compactness loss
     """
     batch_size = batch.max().item() + 1
     asphericities = []
+    radius_penalties = []
     
     for i in range(batch_size):
         # Get positions for this molecule
@@ -461,6 +476,7 @@ def sphericity_loss(
         # Center coordinates
         centered = mol_pos - mol_pos.mean(dim=0, keepdim=True)
         
+        # ===== Asphericity penalty (shape) =====
         # Gyration tensor: S = (1/N) X^T X
         S = torch.mm(centered.t(), centered) / centered.size(0)  # [3, 3]
         
@@ -473,10 +489,31 @@ def sphericity_loss(
         # Maximally elongated: λ1 = λ2 = 0, asphericity → 1
         trace = eigvals.sum()
         asphericity = (eigvals[2] - eigvals[0]) / (trace + 1e-8)
-        
         asphericities.append(asphericity)
+        
+        # ===== Radius penalty (compactness) =====
+        # Penalize atoms being too far from target radius
+        radii = torch.norm(centered, dim=1)  # [N_i]
+        mean_radius = radii.mean()
+        
+        # Penalty for wrong average radius
+        radius_deviation = (mean_radius - target_radius).abs()
+        
+        # CRITICAL: Also penalize variance (atoms scattered at different radii)
+        # This prevents fragmentation where some atoms are far away
+        radius_variance = radii.var()
+        
+        # Combined radius penalty
+        radius_penalty = radius_deviation + 0.5 * torch.sqrt(radius_variance + 1e-8)
+        radius_penalties.append(radius_penalty)
     
-    return torch.mean(torch.stack(asphericities))
+    asphericity_loss = torch.mean(torch.stack(asphericities))
+    radius_loss = torch.mean(torch.stack(radius_penalties))
+    
+    # Weighted combination
+    # Asphericity is already 0-1 normalized, radius is in Angstroms
+    # Balance them with radius_weight
+    return asphericity_loss + radius_weight * radius_loss
 
 
 if __name__ == '__main__':

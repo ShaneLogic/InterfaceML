@@ -21,7 +21,7 @@ from torch_geometric.data import Data
 from model import FullereneDiffusionModel
 from diffusion_utils import DiffusionScheduler
 from dataset import FullereneDataset
-from generate import create_template_graph, sample_structure
+from generate import load_template_graph, sample_structure
 from evaluate import (
     parse_xyz_file,
     compute_bond_lengths,
@@ -58,6 +58,7 @@ class FullereneAPI:
         self.model = None
         self.scheduler = None
         self.checkpoint_info = None
+        self.config = {}
         
         if checkpoint_path:
             self.load_model(checkpoint_path)
@@ -87,32 +88,41 @@ class FullereneAPI:
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             
             # Initialize model
-            model_config = checkpoint.get('config', {
+            self.config = checkpoint.get('config', {})
+            model_config = self.config.get('model', {
                 'hidden_dim': 64,
                 'num_layers': 3,
-                'edge_dim': 0
+                'edge_dim': 0,
+                'C_embed_dim': 32,
+                'time_embed_dim': 64,
             })
             
             self.model = FullereneDiffusionModel(
                 hidden_dim=model_config['hidden_dim'],
                 num_layers=model_config['num_layers'],
-                edge_dim=model_config.get('edge_dim', 0)
+                edge_dim=model_config.get('edge_dim', 0),
+                C_embed_dim=model_config.get('C_embed_dim', 32),
+                time_embed_dim=model_config.get('time_embed_dim', 64),
             ).to(self.device)
             
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.model.eval()
             
             # Initialize diffusion scheduler
+            diff_config = self.config.get('diffusion', {})
             self.scheduler = DiffusionScheduler(
-                num_steps=checkpoint.get('num_steps', 1000),
-                beta_schedule=checkpoint.get('beta_schedule', 'cosine')
+                num_steps=diff_config.get('num_steps', 1000),
+                beta_schedule=diff_config.get('beta_schedule', 'cosine'),
+                beta_start=diff_config.get('beta_start', 0.0001),
+                beta_end=diff_config.get('beta_end', 0.02),
+                device=self.device,
             )
             
             # Store checkpoint info
             self.checkpoint_info = {
                 'epoch': checkpoint.get('epoch', 0),
                 'best_val_loss': checkpoint.get('best_val_loss', float('inf')),
-                'config': model_config
+                'config': self.config
             }
             
             logger.info(f"Model loaded successfully (epoch {self.checkpoint_info['epoch']})")
@@ -164,15 +174,17 @@ class FullereneAPI:
         try:
             for i in range(num_samples):
                 # Create template graph
-                template = create_template_graph(num_carbon, self.device)
+                template = load_template_graph(num_carbon, self.config, self.device)
                 
                 # Sample structure
                 pos_final, trajectory = sample_structure(
                     self.model,
                     self.scheduler,
                     template,
-                    ddim=ddim,
-                    return_trajectory=return_trajectory
+                    C_value=num_carbon,
+                    use_ddim=ddim,
+                    return_trajectory=return_trajectory,
+                    loss_config=self.config.get('loss', {}),
                 )
                 
                 # Convert to numpy

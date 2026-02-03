@@ -14,6 +14,16 @@ data:
   center: true          # Center at origin
   normalize_scale: true # Normalize to unit variance
 
+  # Synthetic topology augmentation (optional)
+  synthetic_topology:
+    enabled: false
+    apply_to: train        # train|val|test|all
+    C_values: []           # e.g. [72, 76, 84]
+    per_C: 2               # number of synthetic graphs per C
+    max_tries: 300         # max attempts per graph (planar 3-regular)
+    seed: 20260131
+    refine: true           # apply lightweight geometric refinement
+
 # Model architecture
 model:
   hidden_dim: 64       # Node feature dimension
@@ -42,7 +52,7 @@ diffusion:
 training:
   epochs: 150               # INCREASED: More training for better convergence
   batch_size: 8
-  learning_rate: 0.0001     # Increased from 0.00005 for faster convergence
+  learning_rate: 5.0e-5     # REDUCED: 1e-4→5e-5 (降低学习率以提高数值稳定性)
   weight_decay: 0.0001
   
   # Optimizer
@@ -50,30 +60,59 @@ training:
   betas: [0.9, 0.999]
   eps: 1.0e-8
   
-# Loss configuration (CRITICAL - optimized weights based on diagnosis)
+# Loss configuration (OPTIMIZED v3 - ENHANCED Geometry Constraints)
 loss:
   # Primary denoising loss
   noise_weight: 1.0
   
-  # Physics-informed constraints
-  lambda_bond: 5.0          # OPTIMIZED: 0.5→5.0 (10x) - enforce tight bond lengths
-  target_bond: 1.42         # C-C bond in fullerenes (sp2 hybridization)
-  bond_tolerance: 0.05      # Acceptable deviation
+  # Physics-informed constraints with time-conditioning
+  # v3 improvements: SIGNIFICANTLY increased geometric constraints
+  # - Addresses issue: structures topologically correct but geometrically broken
+  # - Focus: tight bond lengths + compact spherical shape
   
-  lambda_sphere: 2.0        # OPTIMIZED: 0.2→2.0 (10x) - enforce spherical shape
-  lambda_repulsion: 0.5     # INCREASED: 0.1→0.5 - prevent atom overlap
+  lambda_bond: 70.0         # STRONGER: enforce target bond lengths
+  target_bond: 1.42         # C-C bond in fullerenes (sp2 hybridization)
+  bond_tolerance: 0.03      # TIGHTENED: 0.05→0.03 (stricter tolerance)
+  
+  lambda_sphere: 10.0       # Compactness/sphericity
+  lambda_repulsion: 2.5     # Stronger non-bonded repulsion (prevents clumping)
+  repulsion_min_dist: 1.60  # Å, minimum non-bonded distance target
+  
+  # NEW v2: Progressive connectivity loss (replaces harsh 10× penalty)
+  lambda_connectivity: 7.0  # Stronger neighbor distance enforcement
+  
+  # NEW v2: Robust topology loss (handles disconnected graphs gracefully)
+  lambda_topology: 1.0      # Prevent fragmentation
   
   # Gradient management
-  grad_clip: 1.0            # Gradient clipping value
+  grad_clip: 5.0            # INCREASED: 1.0→5.0 (allow larger clips for extreme gradients)
   use_adaptive_clipping: false  # DISABLED: Remove aggressive clipping
   
   # Optimization
   warmup_epochs: 10         # INCREASED: Longer warmup for stable training
+
+  # Time sampling bias for stronger geometry learning
+  low_t_fraction: 0.8       # Fraction of batches sampled from low-noise range
+  low_t_max: 100            # Upper bound for low-noise timesteps
   
   # Logging
   log_interval: 10     # Log every N batches
   eval_interval: 100   # Evaluate only at the end of 100 epochs
   save_interval: 10    # Save checkpoint every N epochs
+
+# Topology GNN (train before diffusion, optional)
+topology_gnn:
+  enabled: true
+  train_before_diffusion: true
+  checkpoint_path: "checkpoints/topology_gnn.pt"
+  max_C: 720
+  hidden_dim: 64
+  latent_dim: 32
+  epochs: 50
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-5
+  lambda_degree: 0.1
+  lambda_kl: 0.01
 
 # Evaluation
 evaluation:
@@ -87,5 +126,5 @@ evaluation:
 
 # Hardware
 device: "cuda"  # "cuda" or "cpu" (auto-detect if cuda available)
-num_workers: 4   # DataLoader workers
+num_workers: 0   # DataLoader workers (0 = avoid multiprocessing issues)
 seed: 20260128
