@@ -10,16 +10,18 @@ The **Layer Splitting** feature allows you to separate multi-layer heterostructu
 
 ## Key Features
 
-### ✅ Preserves Original Lattice
+### Preserves Original Lattice
 Each separated layer maintains the **exact same lattice parameters** as the input structure. Only the atomic positions are filtered by layer.
 
-### ✅ Automatic Interface Detection
-The algorithm automatically identifies interfaces by detecting the largest gaps along the stacking direction (interface normal).
+### Automatic Interface Detection
+Two modes are available:
+- Simple gap-based detection (legacy CLI)
+- Composition-aware smart detection (core, default in `interfaceml.core.splitting`)
 
-### ✅ Flexible Layer Count
-- **1 interface** → 2 layers
-- **2 interfaces** → 3 layers
-- **N interfaces** → N+1 layers
+### Flexible Layer Count
+- **1 interface** -> 2 layers
+- **2 interfaces** -> 3 layers
+- **N interfaces** -> N+1 layers
 
 ---
 
@@ -35,7 +37,7 @@ python -m interfaceml.web.app --port 8000
 2. **Navigate to "Layer Fixing" tab**
 
 3. **Switch to "Split into Layers" mode**:
-   - Click the "✂️ Split into Layers" button
+   - Click the "Split into Layers" button
 
 4. **Upload structure**:
    - Drag and drop or click to upload your multi-layer structure
@@ -43,7 +45,7 @@ python -m interfaceml.web.app --port 8000
 
 5. **Configure parameters**:
    - **Number of Interfaces**: Set to 1 for 2-layer, 2 for 3-layer, etc.
-   - **Minimum Gap (Å)**: Minimum gap to recognize as interface (default: 0.0)
+   - **Minimum Gap (Angstrom)**: Minimum gap to recognize as interface (default: 0.0)
 
 6. **Click "Split into Layers"**
 
@@ -80,11 +82,12 @@ from interfaceml.core import io, splitting
 # Load multi-layer structure
 structure = io.load_structure("perovskite_c70_c60.vasp")
 
-# Split into layers (2 interfaces → 3 layers)
+# Split into layers (2 interfaces -> 3 layers)
 layers = splitting.split_structure_into_layers(
     structure,
     n_interfaces=2,
-    min_gap=0.0
+    min_gap=1.5,
+    use_smart_detection=True
 )
 
 print(f"Split into {len(layers)} layers")
@@ -99,36 +102,26 @@ for i, layer in enumerate(layers, 1):
 
 ## Algorithm Details
 
-### Step 1: Project Heights
-All atoms are projected onto the interface normal vector (computed from a × b).
+The canonical algorithm descriptions live in:
+- `docs/SMART_SPLITTING_ALGORITHM.md` (smart, composition-aware splitting)
+- `docs/MATHEMATICAL_OVERVIEW.md` (math summary and interface matching)
 
-### Step 2: Unwrap Periodic Coordinates
-The periodic z-coordinate is unwrapped by cutting at the largest gap (typically vacuum).
-
-### Step 3: Identify Interface Gaps
-The algorithm finds the N largest gaps, where N = number of interfaces.
-
-### Step 4: Assign Atoms to Layers
-Atoms are grouped into (N+1) layers based on the interface boundaries.
-
-### Step 5: Create Layer Structures
-For each layer:
-- Keep the **original lattice** (a, b, c, α, β, γ)
-- Extract only atoms belonging to that layer
-- Preserve fractional coordinates
-- Save as separate structure file
+At a high level, the split workflow is:
+1. Project atoms onto the interface normal and unwrap periodic coordinates.
+2. Identify interfaces using gap-only or composition-aware scoring.
+3. Split into N+1 layers while preserving the original lattice.
 
 ---
 
 ## Examples
 
-### Example 1: Perovskite/C60 Stack (1 Interface → 2 Layers)
+### Example 1: Perovskite/C60 Stack (1 Interface -> 2 Layers)
 
 **Input**: `fapbi3_c60.vasp` (180 perovskite atoms + 60 C60 atoms)
 
 **Command**:
 ```bash
-# Via web: Upload → Set n_interfaces=1 → Split
+# Via web: Upload -> Set n_interfaces=1 -> Split
 # Via CLI:
 python -m interfaceml.core.splitting split fapbi3_c60.vasp output/ --n-interfaces 1
 ```
@@ -139,7 +132,7 @@ python -m interfaceml.core.splitting split fapbi3_c60.vasp output/ --n-interface
 
 Both layers have the **same lattice** as the input file.
 
-### Example 2: Perovskite/C70/C60 Stack (2 Interfaces → 3 Layers)
+### Example 2: Perovskite/C70/C60 Stack (2 Interfaces -> 3 Layers)
 
 **Input**: `perovskite_c70_c60.vasp` (180 + 70 + 60 = 310 atoms)
 
@@ -161,7 +154,7 @@ Both layers have the **same lattice** as the input file.
 ### 1. Charge Density Analysis
 Split layers to compute individual charge densities, then calculate:
 ```
-Δρ = ρ(interface) - ρ(layer1) - ρ(layer2)
+Delta rho = rho(interface) - rho(layer1) - rho(layer2)
 ```
 
 ### 2. Layer-by-Layer Optimization
@@ -195,7 +188,7 @@ assert original_lattice.matrix.all() == layer2_lattice.matrix.all()
 
 This means:
 - Same cell dimensions (a, b, c)
-- Same cell angles (α, β, γ)
+- Same cell angles (alpha, beta, gamma)
 - Fractional coordinates are preserved
 - Vacuum/empty space is maintained in each layer file
 
@@ -223,7 +216,7 @@ Layers are always ordered **from bottom to top**:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | Number of Interfaces | int | 1 | Number of interfaces to split by |
-| Minimum Gap (Å) | float | 0.0 | Minimum gap to consider as interface |
+| Minimum Gap (Angstrom) | float | 0.0 | Minimum gap to consider as interface |
 
 ### CLI Parameters
 
@@ -354,8 +347,8 @@ python build_heterojunctions/fix_interface_layers.py \
 
 The Layer Splitting feature appears in the **Layer Fixing** tab with two modes:
 
-1. **🔧 Fix Layers (Selective Dynamics)** - Add T/F flags for VASP
-2. **✂️ Split into Layers** - Separate multi-layer structures
+1. **Fix Layers (Selective Dynamics)** - Add T/F flags for VASP
+2. **Split into Layers** - Separate multi-layer structures
 
 When in Split mode:
 - Upload your multi-layer structure
@@ -368,7 +361,7 @@ When in Split mode:
 ## FAQ
 
 **Q: Do the layer files still have the same cell size?**  
-A: Yes! The lattice parameters are **identical** to the input structure. Only atoms are filtered.
+A: Yes. The lattice parameters are **identical** to the input structure. Only atoms are filtered.
 
 **Q: Can I split a 2-layer structure?**  
 A: Yes, use `n_interfaces = 1` to split into 2 layers.
@@ -377,7 +370,7 @@ A: Yes, use `n_interfaces = 1` to split into 2 layers.
 A: The output VASP files use fractional coordinates (Direct mode), matching standard VASP format.
 
 **Q: Can I use this with CP2K XYZ files?**  
-A: Yes! The web interface accepts .xyz files with CP2K-style cell vectors.
+A: Yes. The web interface accepts .xyz files with CP2K-style cell vectors.
 
 **Q: Will this work for non-interface structures?**  
 A: It's designed for stacked structures with clear gaps. For general layer detection, use the "Fix Layers" mode with `--by_z_layers`.
@@ -392,4 +385,4 @@ A: It's designed for stacked structures with clear gaps. For general layer detec
 
 ---
 
-**Happy splitting! ✂️**
+Use the contact information in the main README for questions or support.

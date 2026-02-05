@@ -1,6 +1,9 @@
 # Getting Started with InterfaceML
 
-This guide will help you get started with InterfaceML for heterojunction modeling.
+This guide provides a structured introduction to InterfaceML for heterojunction modeling.
+
+Note: `interfaceml/core` is the canonical API surface. The legacy scripts in
+`build_heterojunctions/` delegate to core utilities when available.
 
 ## Table of Contents
 - [Installation](#installation)
@@ -44,11 +47,13 @@ pip install -r requirements.txt
 python build_heterojunctions/interface_builder.py --help
 
 # Test Python import
-python -c "from interfaceml.core import io, layering; print('✓ InterfaceML imported successfully')"
+python -c "from interfaceml.core import io, layering; print('InterfaceML import: OK')"
 
 # (Optional) Start web interface
 python -m interfaceml.web.app
 ```
+
+The web server uses an app factory with blueprint routes; the CLI entrypoint stays the same.
 
 ---
 
@@ -90,9 +95,9 @@ The algorithm automatically:
 For adsorbate modeling, supercells are needed to minimize periodic interactions:
 
 - **Auto mode**: Automatically sizes based on adsorbate diameter (recommended)
-- **Manual mode**: Specify exact nx × ny dimensions
+- **Manual mode**: Specify exact nx x ny dimensions
 
-Rule of thumb: Adsorbate-adsorbate distance should be > 10 Å
+Rule of thumb: Adsorbate-adsorbate distance should be greater than 10 Angstrom
 
 ### 4. Layer Detection
 
@@ -105,7 +110,7 @@ InterfaceML can automatically detect atomic layers for:
 
 ## Your First Interface
 
-Let's build a FAPbI3/C60 interface step-by-step:
+Example: build a FAPbI3/C60 interface step-by-step.
 
 ### Step 1: Prepare Structure Files
 
@@ -255,7 +260,7 @@ python build_heterojunctions/interface_builder.py \
 
 **Solution:**
 - Visualize with `--debug_layers` flag
-- Adjust `--tol` parameter (try 0.3-0.7 Å)
+- Adjust `--tol` parameter (try 0.3-0.7 Angstrom)
 - Use `--layer_elements` to specify which elements define layers
 - For XYZ files, ensure cell vectors (Tv_1/Tv_2/Tv_3) are present
 
@@ -301,17 +306,17 @@ python -c "import pymatgen; print(pymatgen.__version__)"
 - Read the [detailed CLI documentation](../build_heterojunctions/README.md)
 - Explore example structures in `structures/`
 - Try the [web interface](../interfaceml/web/) for interactive modeling
-- Join our community discussions on GitHub
+- Review discussions on GitHub for similar workflows
 
 ---
 
 ## Getting Help
 
-- 📖 Check the [main README](../README.md)
-- 🐛 Report bugs on [GitHub Issues](https://github.com/yourusername/InterfaceML/issues)
-- 💬 Ask questions in [Discussions](https://github.com/yourusername/InterfaceML/discussions)
-- 📧 Email: interface@example.com
+- Check the [main README](../README.md)
+- Report bugs on [GitHub Issues](https://github.com/yourusername/InterfaceML/issues)
+- Ask questions in [Discussions](https://github.com/yourusername/InterfaceML/discussions)
+- Email: interface@example.com
 
 ---
 
-**Happy modeling! 🚀**
+For additional help, use the links above.

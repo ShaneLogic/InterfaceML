@@ -262,3 +262,45 @@ def include_whole_molecules(
             fixed_set.update(comp)
     return sorted(fixed_set)
 
+
+# Prefer canonical core implementations when available
+try:
+    from interfaceml.core import layering as _core_layering
+except ImportError:  # pragma: no cover - fallback for standalone usage
+    _core_layering = None  # type: ignore[assignment]
+
+if _core_layering is not None:
+    interface_normal_unit = _core_layering.interface_normal_unit  # type: ignore[assignment]
+    unwrap_periodic_1d = _core_layering.unwrap_periodic_1d  # type: ignore[assignment]
+    split_stack_layers = _core_layering.split_stack_layers  # type: ignore[assignment]
+    connected_components_by_distance = _core_layering.connected_components_by_distance  # type: ignore[assignment]
+
+    def auto_layer_tol(diffs: np.ndarray) -> float:  # type: ignore[override]
+        return _core_layering.auto_layer_tolerance(diffs)
+
+    def split_layers_by_z(  # type: ignore[override]
+        structure: Structure,
+        *,
+        tol: float | None = None,
+        gap_cut: bool = True,
+    ) -> tuple[list[list[int]], float]:
+        return _core_layering.split_layers_by_z(structure, tolerance=tol, gap_cut=gap_cut)
+
+    def include_whole_molecules(  # type: ignore[override]
+        structure: Structure,
+        fixed_indices_0based: list[int],
+        *,
+        molecule_elements: Set[str] | None = None,
+    ) -> list[int]:
+        return _core_layering.include_whole_molecules(
+            structure,
+            fixed_indices_0based,
+            molecule_elements=molecule_elements,
+        )
+
+    def layer_indices_to_string(  # type: ignore[override]
+        indices_0based: list[int],
+        *,
+        one_based: bool = True,
+    ) -> str:
+        return _core_layering.format_layer_indices(indices_0based, one_based=one_based)

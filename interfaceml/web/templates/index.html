@@ -17,6 +17,9 @@
                     InterfaceML
                 </h1>
                 <p class="tagline">Professional Heterojunction Modeling Platform</p>
+                <div class="header-actions">
+                    <a class="btn btn-secondary btn-sm" href="/docs">Documentation</a>
+                </div>
             </div>
         </div>
     </header>
@@ -375,7 +378,15 @@
                             </ul>
                             <p class="help-text">
                                 Please check server logs or contact your administrator.
-                                Model should be located at: <code>fullerene_diffusion_poc/checkpoints/best_model.pt</code>
+                            </p>
+                            <p class="help-text">
+                                Server reported: <code id="ai-unavailable-reason">AI module not available</code>
+                            </p>
+                            <p class="help-text">
+                                Module path: <code id="ai-unavailable-basepath">fullerene_diffusion_poc</code>
+                            </p>
+                            <p class="help-text">
+                                Expected checkpoint: <code id="ai-unavailable-checkpoint">fullerene_diffusion_poc/checkpoints/best_model.pt</code>
                             </p>
                         </div>
                     </div>

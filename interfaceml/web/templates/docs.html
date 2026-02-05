@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InterfaceML Documentation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="docs-page">
+    <header class="header docs-header">
+        <div class="container">
+            <div class="docs-topbar">
+                <a class="logo-link" href="/">
+                    <span class="logo-mark">IM</span>
+                    <span class="logo-text">InterfaceML</span>
+                </a>
+                <nav class="docs-nav">
+                    <a href="#overview" class="nav-link">Overview</a>
+                    <a href="#manual" class="nav-link">Manual</a>
+                    <a href="#api" class="nav-link">API</a>
+                    <a href="#docs-map" class="nav-link">Docs Map</a>
+                    <a href="/app" class="nav-link">Web App</a>
+                </nav>
+            </div>
+            <div class="docs-hero">
+                <div class="hero-text">
+                    <p class="eyebrow">Repository Guide</p>
+                    <h1>InterfaceML Documentation</h1>
+                    <p class="hero-lede">
+                        A practical guide to installing, running, and integrating InterfaceML for
+                        heterojunction modeling workflows. Search the manual, follow the quick
+                        starts, and browse the API surface.
+                    </p>
+                    <div class="hero-actions">
+                        <a class="btn btn-primary" href="#manual">Get Started</a>
+                        <a class="btn btn-secondary" href="#api">API Overview</a>
+                        <a class="btn btn-secondary" href="/app">Open Web App</a>
+                    </div>
+                </div>
+                <div class="hero-panel">
+                    <div class="hero-panel-header">
+                        <span class="panel-kicker">Quick Start</span>
+                        <span class="panel-pill">CLI + Web + Python</span>
+                    </div>
+                    <pre><code class="language-bash">pip install -r requirements.txt
+pip install -e .
+
+python -m interfaceml.web.app</code></pre>
+                    <p class="hero-panel-note">
+                        Start the server and open <code>http://localhost:5000</code> to use the
+                        interactive interface.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="docs-main">
+        <section id="search" class="docs-section" data-doc-section data-doc-title="Search" data-doc-pinned="true">
+            <div class="container">
+                <div class="search-panel" data-doc-item>
+                    <div class="search-header">
+                        <h2>Search the Docs</h2>
+                        <p>Find commands, workflows, file paths, and API endpoints in one place.</p>
+                    </div>
+                    <div class="search-input-row">
+                        <label class="sr-only" for="doc-search">Search</label>
+                        <input id="doc-search" type="search" placeholder="Search: install, split layers, /api/plot-dos" autocomplete="off">
+                        <button id="search-clear" class="btn btn-secondary btn-sm" type="button">Clear</button>
+                    </div>
+                    <div class="search-meta">
+                        <span id="search-count">All sections</span>
+                        <div id="search-results" class="search-results"></div>
+                    </div>
+                    <div class="search-chips">
+                        <button class="chip" data-search-chip="install">Install</button>
+                        <button class="chip" data-search-chip="web">Web UI</button>
+                        <button class="chip" data-search-chip="adsorbate">Adsorbate</button>
+                        <button class="chip" data-search-chip="split layers">Split layers</button>
+                        <button class="chip" data-search-chip="dos">DOS PDOS</button>
+                        <button class="chip" data-search-chip="api">API</button>
+                        <button class="chip" data-search-chip="python">Python API</button>
+                    </div>
+                    <p class="search-tip">Tip: searches match titles, commands, file paths, and endpoint names.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="overview" class="docs-section" data-doc-section data-doc-title="Overview">
+            <div class="container">
+                <div class="section-header">
+                    <h2>What is InterfaceML?</h2>
+                    <p>
+                        InterfaceML is a toolkit for building and analyzing heterojunction interfaces
+                        for DFT calculations. It ships with a CLI, a Python API, and a Flask web UI.
+                    </p>
+                </div>
+                <div class="doc-grid">
+                    <article class="doc-card" data-doc-item>
+                        <h3>Adsorbate Modeling</h3>
+                        <p>Build perovskite and fullerene interfaces with configurable terminations and layer gaps.</p>
+                        <div class="tag-row">
+                            <span class="tag">PbI / FAI / MAI</span>
+                            <span class="tag">Supercell auto</span>
+                            <span class="tag">Stacked adsorbates</span>
+                        </div>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Interface Builder</h3>
+                        <p>Match two materials with strain control, commensurate supercells, and Miller indices.</p>
+                        <div class="tag-row">
+                            <span class="tag">ZSL matching</span>
+                            <span class="tag">Bidirectional strain</span>
+                            <span class="tag">Report metrics</span>
+                        </div>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Layer Management</h3>
+                        <p>Fix layers for relaxation or split multi-layer stacks while preserving lattice data.</p>
+                        <div class="tag-row">
+                            <span class="tag">Selective dynamics</span>
+                            <span class="tag">Smart splitting</span>
+                            <span class="tag">CP2K ready</span>
+                        </div>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Density and DOS Tools</h3>
+                        <p>Compute delta density cubes and plot TDOS/PDOS overlays from CP2K outputs.</p>
+                        <div class="tag-row">
+                            <span class="tag">Delta rho</span>
+                            <span class="tag">TDOS + PDOS</span>
+                            <span class="tag">PNG export</span>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="manual" class="docs-section" data-doc-section data-doc-title="Use Manual">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Use Manual</h2>
+                    <p>Follow these steps to install, verify, and run your first workflow.</p>
+                </div>
+                <div class="doc-grid">
+                    <article class="doc-card" data-doc-item>
+                        <h3>1. Install</h3>
+                        <p>Install dependencies and the editable package from the repo root.</p>
+                        <pre><code class="language-bash">pip install -r requirements.txt
+pip install -e .</code></pre>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>2. Verify</h3>
+                        <p>Confirm the core API and CLI are available.</p>
+                        <pre><code class="language-bash">python -c "from interfaceml.core import io, layering; print('InterfaceML import: OK')"
+python build_heterojunctions/interface_builder.py --help</code></pre>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>3. CLI Workflow</h3>
+                        <p>Build an adsorbate model, then fix the bottom layers for relaxation.</p>
+                        <pre><code class="language-bash">python build_heterojunctions/interface_builder.py \
+    --adsorbate_mode \
+    --base structures/perovskites/fapbi3-1.cif \
+    --adsorbate structures/etl/C60-Ih.cif \
+    --termination FAI \
+    --distance 2.5 \
+    --output my_interface.vasp
+
+python build_heterojunctions/fix_interface_layers.py \
+    --by_z_layers \
+    --input my_interface.vasp \
+    --n_fix_layers 3 \
+    --output my_interface_fixed.vasp</code></pre>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>4. Web Interface</h3>
+                        <p>Launch the interactive UI for uploads, parameters, and downloads.</p>
+                        <pre><code class="language-bash">python -m interfaceml.web.app</code></pre>
+                        <p class="card-note">Docs load at <code>/</code>; the web app lives at <code>/app</code>.</p>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>5. Python API</h3>
+                        <p>Use the canonical API in <code>interfaceml.core</code> for scripting.</p>
+                        <pre><code class="language-python">from interfaceml.core import io, layering
+
+structure = io.load_structure("my_structure.vasp")
+layers, _ = layering.split_layers_by_z(structure)
+fixed = [i for layer in layers[:3] for i in layer]
+fixed = layering.include_whole_molecules(structure, fixed)
+
+selective = [
+    (False, False, False) if i in fixed else (True, True, True)
+    for i in range(len(structure))
+]
+io.write_poscar(structure, "output.vasp", selective_dynamics=selective)</code></pre>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="workflows" class="docs-section" data-doc-section data-doc-title="Common Workflows">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Common Workflows</h2>
+                    <p>Reference tasks you can run directly from the CLI or the web UI.</p>
+                </div>
+                <div class="doc-grid">
+                    <article class="doc-card" data-doc-item>
+                        <h3>Split Multi-layer Stacks</h3>
+                        <p>Split a multi-layer structure into separate files while preserving the lattice.</p>
+                        <pre><code class="language-bash">python build_heterojunctions/fix_interface_layers.py \
+    --by_layers \
+    --input trilayer.vasp \
+    --n_interfaces 2 \
+    --print_only</code></pre>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Delta Density</h3>
+                        <p>Compute charge density differences for interface analysis.</p>
+                        <pre><code class="language-bash">python build_heterojunctions/delta_density_cube.py \
+    --interface interface_density.cube \
+    --layer1 perovskite_density.cube \
+    --layer2 c60_density.cube \
+    --output delta_density.cube</code></pre>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Layer-resolved PDOS</h3>
+                        <p>Generate CP2K PDOS blocks and layer atom indices.</p>
+                        <pre><code class="language-json">{
+  "structure_file": "/path/to/structure.vasp",
+  "n_interfaces": 2,
+  "min_gap": 1.5,
+  "pdos_filename": "my_pdos"
+}</code></pre>
+                        <p class="card-note">Use the <code>/api/pdos-layers</code> endpoint.</p>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>AI Fullerene Generation</h3>
+                        <p>Generate fullerene structures when the AI module is configured.</p>
+                        <pre><code class="language-json">{
+  "num_atoms": 60,
+  "num_samples": 5,
+  "output_format": "xyz"
+}</code></pre>
+                        <p class="card-note">Use the <code>/api/ai/generate</code> endpoint.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="api" class="docs-section" data-doc-section data-doc-title="API Introduction">
+            <div class="container">
+                <div class="section-header">
+                    <h2>API Introduction</h2>
+                    <p>InterfaceML exposes both a Python API and a REST API from the web server.</p>
+                </div>
+                <div class="doc-grid">
+                    <article class="doc-card" data-doc-item>
+                        <h3>Python API (Core)</h3>
+                        <p>Canonical modules live in <code>interfaceml.core</code>.</p>
+                        <ul class="doc-list">
+                            <li><code>interfaceml.core.io</code> - structure I/O for VASP, CIF, XYZ</li>
+                            <li><code>interfaceml.core.layering</code> - layer detection and fixes</li>
+                            <li><code>interfaceml.core.splitting</code> - smart splitting utilities</li>
+                        </ul>
+                        <pre><code class="language-python">from interfaceml.core import io, splitting
+
+structure = io.load_structure("trilayer.vasp")
+layers = splitting.split_structure_into_layers(structure, n_interfaces=2)
+for i, layer in enumerate(layers, 1):
+    io.write_poscar(layer, f"layer{i}.vasp")</code></pre>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Web API (REST)</h3>
+                        <p>Start the server with <code>python -m interfaceml.web.app</code> and call endpoints below.</p>
+                        <div class="table-wrap">
+                            <table class="api-table">
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Endpoint</th>
+                                        <th>Description</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>GET</td>
+                                        <td><code>/api/health</code></td>
+                                        <td>Health check and module availability.</td>
+                                        <td>Returns version and core status.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/upload</code></td>
+                                        <td>Upload structure or DOS files.</td>
+                                        <td>Multipart form with <code>file</code> and <code>file_type</code>.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GET</td>
+                                        <td><code>/api/download/&lt;filename&gt;</code></td>
+                                        <td>Download generated outputs.</td>
+                                        <td>Files live in the server upload folder.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/build-interface</code></td>
+                                        <td>Build heterojunction interfaces.</td>
+                                        <td>Placeholder: returns 501.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/build-adsorbate</code></td>
+                                        <td>Build adsorbate models.</td>
+                                        <td>Placeholder: returns 501.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/fix-layers</code></td>
+                                        <td>Add selective dynamics to layers.</td>
+                                        <td>Uses <code>structure_file</code> and layer params.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/split-layers</code></td>
+                                        <td>Split structures into layer files.</td>
+                                        <td>Returns layer metadata + download URLs.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/pdos-layers</code></td>
+                                        <td>Create CP2K PDOS blocks per layer.</td>
+                                        <td>Returns indices and PDOS block text.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/plot-dos</code></td>
+                                        <td>Render TDOS + PDOS to PNG.</td>
+                                        <td>Returns <code>image_url</code> for download.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/ai/generate</code></td>
+                                        <td>Generate fullerene structures.</td>
+                                        <td>Requires AI module availability.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>POST</td>
+                                        <td><code>/api/ai/evaluate</code></td>
+                                        <td>Evaluate generated structures.</td>
+                                        <td>Returns metrics and plot URL.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GET</td>
+                                        <td><code>/api/ai/info</code></td>
+                                        <td>Fetch AI model info.</td>
+                                        <td>Returns model metadata when ready.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="example-grid">
+                            <div class="example-block">
+                                <h4>Example: Split Layers</h4>
+                                <pre><code class="language-json">POST /api/split-layers
+{
+  "structure_file": "/path/to/stack.vasp",
+  "n_interfaces": 2,
+  "min_gap": 1.5,
+  "use_smart_detection": true
+}</code></pre>
+                                <pre><code class="language-json">{
+  "status": "success",
+  "n_layers": 3,
+  "layers": [
+    {"layer_number": 1, "filename": "...", "download_url": "..."}
+  ]
+}</code></pre>
+                            </div>
+                            <div class="example-block">
+                                <h4>Example: Plot DOS</h4>
+                                <pre><code class="language-json">POST /api/plot-dos
+{
+  "tdos_file": "/path/to/tdos.dat",
+  "pdos_files": ["/path/to/pdos1.dat", "/path/to/pdos2.dat"],
+  "sigma": 0.12,
+  "x_min": -6,
+  "x_max": 6
+}</code></pre>
+                                <pre><code class="language-json">{
+  "status": "success",
+  "image_url": "/api/download/dos_tdos_pdos_overlay.png"
+}</code></pre>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="docs-map" class="docs-section" data-doc-section data-doc-title="Docs Map">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Documentation Map</h2>
+                    <p>These files contain the deeper workflow and algorithm details.</p>
+                </div>
+                <div class="doc-grid">
+                    <article class="doc-card" data-doc-item>
+                        <h3>Start Here</h3>
+                        <ul class="doc-list">
+                            <li><a class="doc-link" href="/docs/file/START_HERE.md"><code>START_HERE.md</code></a> - navigation map</li>
+                            <li><a class="doc-link" href="/docs/file/QUICK_START.md"><code>QUICK_START.md</code></a> - 5 minute walkthrough</li>
+                            <li><a class="doc-link" href="/docs/file/README.md"><code>README.md</code></a> - feature overview</li>
+                        </ul>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Guides</h3>
+                        <ul class="doc-list">
+                            <li><a class="doc-link" href="/docs/file/docs/GETTING_STARTED.md"><code>docs/GETTING_STARTED.md</code></a> - end-to-end tutorial</li>
+                            <li><a class="doc-link" href="/docs/file/docs/LAYER_SPLITTING.md"><code>docs/LAYER_SPLITTING.md</code></a> - splitting workflows</li>
+                            <li><a class="doc-link" href="/docs/file/docs/MATHEMATICAL_OVERVIEW.md"><code>docs/MATHEMATICAL_OVERVIEW.md</code></a> - math details</li>
+                        </ul>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>CLI Reference</h3>
+                        <ul class="doc-list">
+                            <li><a class="doc-link" href="/docs/file/build_heterojunctions/README.md"><code>build_heterojunctions/README.md</code></a></li>
+                            <li><code>build_heterojunctions/interface_builder.py</code></li>
+                            <li><code>build_heterojunctions/fix_interface_layers.py</code></li>
+                        </ul>
+                    </article>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="docs-footer">
+        <div class="container">
+            <div class="footer-content">
+                <span>InterfaceML Documentation</span>
+                <span>Built for heterojunction workflows</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/docs.js') }}"></script>
+</body>
+</html>

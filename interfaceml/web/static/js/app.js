@@ -1066,12 +1066,20 @@ async function checkAIAvailability() {
     const statusDiv = document.getElementById('ai-status');
     const contentDiv = document.getElementById('ai-content-main');
     const unavailableDiv = document.getElementById('ai-unavailable');
+    const reasonEl = document.getElementById('ai-unavailable-reason');
+    const checkpointEl = document.getElementById('ai-unavailable-checkpoint');
+    const basePathEl = document.getElementById('ai-unavailable-basepath');
     
     try {
         const response = await fetch('/api/ai/info');
-        const data = await response.json();
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            data = null;
+        }
         
-        if (response.ok && data.available) {
+        if (response.ok && data && data.available) {
             state.aiAvailable = true;
             
             // Update status indicator
@@ -1090,11 +1098,18 @@ async function checkAIAvailability() {
             
             console.log('AI Module Info:', data);
         } else {
-            throw new Error(data.error || 'AI module not available');
+            const errorDetail = (data && data.error) ? data.error : `AI module not available (HTTP ${response.status})`;
+            const checkpointPath = data && data.checkpoint_path ? data.checkpoint_path : null;
+            const basePath = data && data.base_path ? data.base_path : null;
+            throw { message: errorDetail, checkpointPath, basePath };
         }
     } catch (error) {
         state.aiAvailable = false;
         
+        const errorMessage = error && error.message ? error.message : 'AI module not available';
+        const checkpointPath = error && error.checkpointPath ? error.checkpointPath : null;
+        const basePath = error && error.basePath ? error.basePath : null;
+
         // Update status indicator
         if (statusDiv) {
             statusDiv.innerHTML = `
@@ -1108,6 +1123,10 @@ async function checkAIAvailability() {
         // Show unavailable message
         if (contentDiv) contentDiv.style.display = 'none';
         if (unavailableDiv) unavailableDiv.style.display = 'block';
+
+        if (reasonEl) reasonEl.textContent = errorMessage;
+        if (checkpointEl && checkpointPath) checkpointEl.textContent = checkpointPath;
+        if (basePathEl && basePath) basePathEl.textContent = basePath;
         
         console.error('AI module check failed:', error);
     }

@@ -37,8 +37,13 @@ setup(
         "pymatgen>=2022.0.0",
         "flask>=2.0.0",
         "flask-cors>=3.0.0",
+        "werkzeug>=2.0.0",
+        "matplotlib>=3.6.0",
     ],
     extras_require={
+        "perf": [
+            "scipy>=1.7.0",
+        ],
         "dev": [
             "pytest>=6.0",
             "black>=21.0",

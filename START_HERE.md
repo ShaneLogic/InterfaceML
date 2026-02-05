@@ -9,6 +9,7 @@ Minimal navigation for the core package docs.
 - Project overview and installation: [`README.md`](README.md)
 - 5-minute usage examples (CLI / Web / API): [`QUICK_START.md`](QUICK_START.md)
 - End-to-end tutorial: [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md)
+- Canonical core APIs live in `interfaceml/core`; legacy CLI scripts in `build_heterojunctions/` delegate to core when available.
 
 ---
 
@@ -16,6 +17,12 @@ Minimal navigation for the core package docs.
 
 - Practical guide: [`docs/LAYER_SPLITTING.md`](docs/LAYER_SPLITTING.md)
 - Algorithm details (smart splitting): [`docs/SMART_SPLITTING_ALGORITHM.md`](docs/SMART_SPLITTING_ALGORITHM.md)
+
+---
+
+## Math and Algorithms
+
+- Mathematical and algorithmic overview: [`docs/MATHEMATICAL_OVERVIEW.md`](docs/MATHEMATICAL_OVERVIEW.md)
 
 ---
 
@@ -36,17 +43,18 @@ Minimal navigation for the core package docs.
 
 ```
 InterfaceML/
-├── README.md
-├── QUICK_START.md
-├── START_HERE.md
-├── docs/
-│   ├── GETTING_STARTED.md
-│   ├── LAYER_SPLITTING.md
-│   └── SMART_SPLITTING_ALGORITHM.md
-├── build_heterojunctions/
-│   └── README.md
-└── templates/
-    ├── new_cli_tool_template.py
-    ├── new_core_module_template.py
-    └── README_templates.md
+|-- README.md
+|-- QUICK_START.md
+|-- START_HERE.md
+|-- docs/
+|   |-- GETTING_STARTED.md
+|   |-- LAYER_SPLITTING.md
+|   |-- MATHEMATICAL_OVERVIEW.md
+|   `-- SMART_SPLITTING_ALGORITHM.md
+|-- build_heterojunctions/
+|   `-- README.md
+`-- templates/
+    |-- new_cli_tool_template.py
+    |-- new_core_module_template.py
+    `-- README_templates.md
 ```

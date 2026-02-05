@@ -1,6 +1,6 @@
 # InterfaceML Code Templates
 
-This directory contains templates to help you quickly add new functionality to InterfaceML.
+This directory contains templates for adding new functionality to InterfaceML.
 
 ## Available Templates
 
@@ -30,7 +30,7 @@ cp templates/new_core_module_template.py interfaceml/core/your_module.py
 # - Update __all__ list
 
 # Test it
-python -c "from interfaceml.core import your_module; print('✓ Module imported')"
+python -c "from interfaceml.core import your_module; print('Module imported')"
 ```
 
 ---
@@ -73,8 +73,8 @@ python build_heterojunctions/your_tool.py --help
 
 ### Step 1: Choose Template
 
-**Core Module** → For scientific algorithms
-**CLI Tool** → For command-line interface
+**Core Module** -> For scientific algorithms
+**CLI Tool** -> For command-line interface
 
 ### Step 2: Copy and Rename
 
@@ -273,7 +273,7 @@ def test_basic_functionality():
     result, meta = your_module.your_function(struct, parameter1=2.5)
     assert len(result) > 0
     assert 'key' in meta
-    print("✓ Test passed")
+    print("Test passed")
 
 if __name__ == "__main__":
     test_basic_functionality()
@@ -353,4 +353,4 @@ python -c "from interfaceml.core import NAME"
 
 ---
 
-**Happy coding! 🚀**
+Use these templates as a starting point for new modules and tools.

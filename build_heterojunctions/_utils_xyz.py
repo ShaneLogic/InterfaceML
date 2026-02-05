@@ -83,3 +83,15 @@ def read_cp2k_xyz_last_frame(path: Path) -> Tuple[List[str], np.ndarray, Optiona
         raise ValueError(f"Expected {nat} atoms but parsed {len(symbols)} atoms from: {path}")
     return symbols, np.array(coords, dtype=float), last_cell
 
+
+# Prefer the canonical core implementation when available (keeps behavior consistent)
+try:
+    from interfaceml.core.io import read_cp2k_xyz_last_frame as _core_read_cp2k_xyz_last_frame
+except ImportError:  # pragma: no cover - fallback for standalone usage
+    _core_read_cp2k_xyz_last_frame = None  # type: ignore[assignment]
+
+if _core_read_cp2k_xyz_last_frame is not None:
+    def read_cp2k_xyz_last_frame(  # type: ignore[override]
+        path: Path,
+    ) -> Tuple[List[str], np.ndarray, Optional[np.ndarray]]:
+        return _core_read_cp2k_xyz_last_frame(path)

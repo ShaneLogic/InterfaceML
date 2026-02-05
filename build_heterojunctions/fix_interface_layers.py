@@ -17,11 +17,8 @@ Requirements: pymatgen, numpy
 """
 
 import argparse
-import re
-from pathlib import Path
-
 import numpy as np
-from pymatgen.core import Lattice, Structure
+from pymatgen.core import Structure
 from pymatgen.io.vasp import Poscar
 
 # Shared utilities (engineering refactor):
@@ -53,62 +50,6 @@ except ImportError:
     )
 
 
-_TV_RE = re.compile(
-    r"Tv_1:\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tv_2:\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tv_3:\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)"
-)
-
-
-def _read_cp2k_xyz_last_frame(path: Path) -> tuple[list[str], np.ndarray, np.ndarray | None]:
-    """
-    Read the last frame of a CP2K-style XYZ file.
-
-    Expected format:
-      <natoms>
-      Tv_1: ax ay az Tv_2: bx by bz Tv_3: cx cy cz   (optional but recommended)
-      Elem x y z
-      ...
-    """
-    lines = path.read_text(errors="replace").splitlines()
-    if len(lines) < 3:
-        raise ValueError(f"XYZ file too short: {path}")
-
-    i = 0
-    last_block: tuple[int, int] | None = None
-    last_cell: np.ndarray | None = None
-    while i < len(lines):
-        if not lines[i].strip():
-            i += 1
-            continue
-        try:
-            nat = int(lines[i].strip().split()[0])
-        except Exception:
-            break
-        if i + 1 + nat >= len(lines):
-            break
-        comment = lines[i + 1].strip()
-        m = _TV_RE.search(comment)
-        if m:
-            vals = [float(x) for x in m.groups()]
-            last_cell = np.array(vals, dtype=float).reshape(3, 3)
-        last_block = (i, i + 2 + nat)
-        i = i + 2 + nat
-
-    if last_block is None:
-        raise ValueError(f"Could not parse any XYZ frame from: {path}")
-
-    start, _end = last_block
-    nat = int(lines[start].strip().split()[0])
-    symbols: list[str] = []
-    coords: list[list[float]] = []
-    for ln in lines[start + 2 : start + 2 + nat]:
-        parts = ln.split()
-        if len(parts) < 4:
-            continue
-        symbols.append(parts[0])
-        coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    if len(symbols) != nat:
-        raise ValueError(f"Expected {nat} atoms but parsed {len(symbols)} atoms from: {path}")
-    return symbols, np.array(coords, dtype=float), last_cell
 
 
 def load_structure_any(path_str: str) -> Structure:
@@ -122,64 +63,6 @@ def load_structure_any(path_str: str) -> Structure:
     return _load_structure_any(path_str)
 
 
-def _element_symbols(structure: Structure) -> list[str]:
-    """Return plain element symbols for each site."""
-    return [str(sp) for sp in structure.species]
-
-
-def _connected_components_by_distance(
-    structure: Structure,
-    indices: np.ndarray,
-    *,
-    cutoffs: dict[tuple[str, str], float],
-) -> list[list[int]]:
-    """
-    Find connected components for a subset of atoms using simple distance cutoffs.
-
-    This is used to keep organic molecules intact when selecting fixed atoms:
-    if any atom of a molecule is selected, include the whole molecule.
-    """
-    if indices.size == 0:
-        return []
-
-    idx_list = [int(i) for i in indices.tolist()]
-    coords = np.asarray(structure.cart_coords, dtype=float)
-    syms = _element_symbols(structure)
-    n = len(idx_list)
-
-    # Adjacency on the local index space.
-    adj: list[list[int]] = [[] for _ in range(n)]
-    for a in range(n):
-        ia = idx_list[a]
-        sa = syms[ia]
-        pa = coords[ia]
-        for b in range(a + 1, n):
-            ib = idx_list[b]
-            sb = syms[ib]
-            dmax = cutoffs.get((sa, sb)) or cutoffs.get((sb, sa))
-            if dmax is None:
-                continue
-            if float(np.linalg.norm(pa - coords[ib])) <= float(dmax):
-                adj[a].append(b)
-                adj[b].append(a)
-
-    seen = [False] * n
-    comps: list[list[int]] = []
-    for start in range(n):
-        if seen[start]:
-            continue
-        stack = [start]
-        seen[start] = True
-        comp_local: list[int] = []
-        while stack:
-            u = stack.pop()
-            comp_local.append(u)
-            for v in adj[u]:
-                if not seen[v]:
-                    seen[v] = True
-                    stack.append(v)
-        comps.append([idx_list[i] for i in comp_local])
-    return comps
 
 
 def _include_whole_molecules(
@@ -718,4 +601,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-
