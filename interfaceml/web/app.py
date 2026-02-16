@@ -8,11 +8,14 @@ modeling parameters.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 
 from flask import Flask
 from flask_cors import CORS
+
+logger = logging.getLogger(__name__)
 
 from interfaceml.web.ai import load_fullerene_api
 from interfaceml.web.core import load_core_modules
@@ -39,10 +42,14 @@ def create_app() -> Flask:
     ai_status = load_fullerene_api()
     app.extensions['ai_status'] = ai_status
     if ai_status.available:
-        print(f"✓ Fullerene AI module loaded: {ai_status.checkpoint_path}")
+        model_keys = ai_status.available_model_keys
+        logger.info("Fullerene AI loaded: %d model(s) available (%s)", len(model_keys), ', '.join(model_keys))
+        for key, entry in ai_status.models.items():
+            status = "✓ ready" if entry.available else f"✗ {entry.error}"
+            logger.info("  %s [%s]: %s", entry.label, key, status)
     else:
         reason = ai_status.error or "Unknown reason"
-        print(f"⚠ Fullerene AI unavailable: {reason}")
+        logger.warning("Fullerene AI unavailable: %s", reason)
 
     app.register_blueprint(common_bp)
     app.register_blueprint(interface_bp)
@@ -67,14 +74,11 @@ def main() -> None:
     core_status = app.extensions.get("core")
     ai_status = app.extensions.get("ai_status")
 
-    print("\n" + "=" * 60)
-    print("  InterfaceML - Professional Heterojunction Modeling Platform")
-    print("=" * 60)
-    print(f"\n📁 Upload folder: {app.config['UPLOAD_FOLDER']}")
-    print(f"⚙️  Core modules: {'✓ Available' if core_status and core_status.available else '✗ Not available'}")
-    print(f"🤖 AI Generation: {'✓ Available' if ai_status and ai_status.available else '✗ Not available'}")
-    print(f"\n🌐 Server: http://localhost:{args.port}")
-    print("\n" + "=" * 60 + "\n")
+    logger.info("InterfaceML - Professional Heterojunction Modeling Platform")
+    logger.info("Upload folder: %s", app.config['UPLOAD_FOLDER'])
+    logger.info("Core modules: %s", 'available' if core_status and core_status.available else 'not available')
+    logger.info("AI Generation: %s", 'available' if ai_status and ai_status.available else 'not available')
+    logger.info("Server: http://localhost:%d", args.port)
 
     app.run(debug=True, host=args.host, port=args.port)
 

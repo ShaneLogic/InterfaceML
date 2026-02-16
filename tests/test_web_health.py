@@ -1,3 +1,8 @@
+import pytest
+
+flask = pytest.importorskip("flask")
+pytest.importorskip("flask_cors")
+
 from interfaceml.web.app import create_app
 
 

@@ -1,0 +1,132 @@
+# ============================================================================
+# Fullerene Diffusion Model — Phase 2: Physics Fine-tuning
+# ============================================================================
+# Purpose: Resume from the pure-denoising checkpoint (epoch 475) and add
+#          small physics losses to teach the model geometric awareness.
+#
+# Usage:
+#   python train.py --config config_finetune.yaml --resume checkpoints/best_model.pt
+#
+# Expected outcome: The model learns to produce structures that already
+# respect bond lengths and sphericity, reducing dependence on post-processing.
+# ============================================================================
+
+# Inherit the same data config
+data:
+  xyz_dir: "../dataset/fullerenes/fullerene_xyz"
+  analysis_dir: "../dataset/fullerenes/fullerene_xyz/analysis_20260122"
+  split_csv: "../dataset/fullerenes/fullerene_xyz/analysis_20260122/ml_assets/split.csv"
+  C_min: 20
+  C_max: 720             # Expanded: include all available data
+  center: true
+  normalize_scale: true
+  synthetic_topology:
+    enabled: true
+    apply_to: train
+    # Extended: fill small gaps + add large fullerene augmentation
+    C_values: [54, 56, 58, 62, 64, 66, 68, 110, 120, 140, 160, 200]
+    per_C: 5
+    max_tries: 500
+    seed: 20260201
+    refine: true
+
+# Model architecture — v3 with Plan B + Plan D
+model:
+  hidden_dim: 128
+  num_layers: 6
+  edge_dim: 0
+  max_C: 720
+  C_embed_dim: 64
+  # Plan B: continuous C embedding
+  continuous_C_embed: true
+  C_fourier_features: 16
+  # Plan D: hierarchical message passing
+  use_hierarchical: true
+  hierarchical_threshold: 80
+  hierarchical_layers: 2
+  time_embed_dim: 128
+  fourier_features: 16
+
+# Same diffusion config
+diffusion:
+  num_steps: 1000
+  beta_schedule: "cosine"
+  beta_start: 0.0001
+  beta_end: 0.02
+  sampling_steps: 200
+  eta: 0.0
+
+# Fine-tuning: lower LR, fewer epochs
+training:
+  epochs: 500                # More epochs for new modules to converge
+  batch_size: 16
+  learning_rate: 3.0e-4      # Slightly higher for new modules
+  weight_decay: 0.01
+  eval_interval: 5
+  save_interval: 50
+  ema_decay: 0.9999
+  checkpoint_dir: "checkpoints"
+
+# KEY CHANGE: Small physics losses are now ENABLED
+loss:
+  noise_weight: 1.0
+
+  # Phase 2: gentle physics regularization
+  # These are small enough not to destabilize denoising but large enough
+  # to teach geometric awareness
+  lambda_bond: 0.01          # Penalize bond length deviations
+  target_bond: 1.42          # Target C-C bond in Å
+  bond_tolerance: 0.15
+
+  lambda_sphere: 0.01        # Penalize asphericity
+  sphere_time_conditioned: true  # Only enforce at low noise timesteps
+
+  lambda_repulsion: 0.005    # Prevent atom overlap
+  repulsion_min_dist: 1.50   # Min non-bonded distance in Å
+
+  lambda_connectivity: 0.0   # Keep disabled (topology is fixed)
+  lambda_topology: 0.0       # Keep disabled
+
+  # Gradient management
+  grad_clip: 1.0
+  nan_guard: true
+
+  # Sampling guidance (for evaluation during training)
+  guidance_scale: 0.5
+  sampling_bond_iters: 1
+  sampling_bond_strength: 0.3
+  sampling_project_radius: true
+  sampling_rescale_each_step: true
+  sampling_nonbonded_min_dist: 0.3
+
+  # Training schedule
+  warmup_epochs: 5           # Short warmup for fine-tuning
+  warmup_schedule: "linear"
+  low_t_fraction: 0.6        # Bias slightly toward low-noise for geometry
+  low_t_max: 300
+
+  log_interval: 10
+
+# Topology GNN (already trained)
+topology_gnn:
+  enabled: true
+  train_before_diffusion: false
+  checkpoint_path: "checkpoints/topology_gnn.pt"
+  max_C: 720
+  hidden_dim: 128
+  latent_dim: 64
+
+# Evaluation
+evaluation:
+  num_samples: 100
+  metrics:
+    - bond_length_mean
+    - bond_length_std
+    - rmsd_to_nearest
+    - sphericity
+    - validity
+    - nan_fraction
+
+device: "cuda"
+num_workers: 0
+seed: 20260208

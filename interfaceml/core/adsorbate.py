@@ -80,7 +80,12 @@ def auto_supercell_xy(
     b_len = float(np.linalg.norm(slab.lattice.matrix[1]))
 
     diameter = geometry.estimate_molecule_diameter(np.asarray(adsorbate.cart_coords))
+    # Guard against NaN diameter (e.g. from diffusion model producing NaN coords)
+    if not np.isfinite(diameter):
+        diameter = 0.0
     target = max(diameter + buffer, max(a_len, b_len))
+    if not np.isfinite(target):
+        target = max(a_len, b_len, buffer)
 
     nx = int(np.ceil(target / max(a_len, 1e-6)))
     ny = int(np.ceil(target / max(b_len, 1e-6)))
@@ -265,6 +270,8 @@ def stack_structures(
         bottom_aligned.translate_sites(
             list(range(len(bottom_aligned))),
             -n * min_bottom,
+            frac_coords=False,
+            to_unit_cell=False,
         )
         bottom_proj = np.dot(np.asarray(bottom_aligned.cart_coords, dtype=float), n)
         max_bottom = float(bottom_proj.max())
@@ -277,10 +284,14 @@ def stack_structures(
         top_aligned.translate_sites(
             list(range(len(top_aligned))),
             -n * min_top,
+            frac_coords=False,
+            to_unit_cell=False,
         )
         top_aligned.translate_sites(
             list(range(len(top_aligned))),
             n * (max_bottom + float(separation)),
+            frac_coords=False,
+            to_unit_cell=False,
         )
         top_proj = np.dot(np.asarray(top_aligned.cart_coords, dtype=float), n)
         max_top = float(top_proj.max())
@@ -301,11 +312,22 @@ def stack_structures(
             fc = combined_lat.get_fractional_coords(coord)
             fc_x = fc[0] % 1.0
             fc_y = fc[1] % 1.0
-            fc_z = fc[2] % 1.0
-            if keep_above is True and fc_z < interface_z_frac - 0.05:
-                fc_z = fc_z + 1.0
-            if keep_above is False and fc_z > interface_z_frac + 0.05:
-                fc_z = fc_z - 1.0
+            # For the adsorbate (top) layer we do NOT wrap z — the atoms
+            # have been explicitly placed above the slab by translate_sites
+            # and should keep their Cartesian z.  Wrapping can push them
+            # inside the slab or below it, causing the "missing fullerene"
+            # visual artefact.
+            if keep_above is None:
+                fc_z = fc[2]
+            elif keep_above:
+                # Keep atoms above the interface — no modulo wrapping
+                fc_z = fc[2]
+                if fc_z < 0:
+                    fc_z = fc_z + 1.0
+            else:
+                fc_z = fc[2] % 1.0
+                if fc_z > interface_z_frac + 0.05:
+                    fc_z = fc_z - 1.0
             fracs.append(np.array([fc_x, fc_y, fc_z], dtype=float))
         return fracs
 

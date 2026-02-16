@@ -36,7 +36,7 @@ dataset/perovskite/cif_merge/*.cif
 
 Fullerene structures (XYZ from diffusion):
 ```
-fullerene_diffusion_poc/generated/**/*.xyz
+fullerene_e3gen/generated/**/*.xyz
 dataset/fullerenes/fullerene_xyz/**/C*.xyz
 ```
 
@@ -49,7 +49,7 @@ Use the batch adsorbate builder:
 ```bash
 python build_heterojunctions/batch_adsorbate_builder.py \
   --perovskite_dir dataset/perovskite/mp_perovskite_cifs \
-  --fullerene_dir fullerene_diffusion_poc/generated/quick_test \
+  --fullerene_dir fullerene_e3gen/generated/quick_test \
   --output_dir outputs/interfaces \
   --miller 0,0,1 \
   --slab_thickness 18 \

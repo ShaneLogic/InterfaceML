@@ -11,6 +11,8 @@ const state = {
     pdosFiles: [],     // Array of PDOS file data
     pdosCounter: 0,    // Counter for unique PDOS IDs
     aiAvailable: false,
+    selectedModel: 'egnn',   // 'egnn' or 'painn_fm'
+    availableModels: {},     // keyed by model key
     currentStructures: [],
     generationHistory: []
 };
@@ -1021,7 +1023,59 @@ document.head.appendChild(style);
 function initializeAITab() {
     // Check AI module availability
     checkAIAvailability();
-    
+
+    // ===== Model Selector =====
+    initializeModelSelector();
+
+    // ===== AI Mode Switcher =====
+    const aiModeButtons = document.querySelectorAll('.ai-mode-selector .mode-btn');
+    const fullereneMode = document.getElementById('ai-fullerene-mode');
+    const interfaceMode = document.getElementById('ai-interface-mode');
+
+    aiModeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.aiMode;
+            aiModeButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (mode === 'fullerene') {
+                fullereneMode.style.display = 'block';
+                interfaceMode.style.display = 'none';
+            } else {
+                fullereneMode.style.display = 'none';
+                interfaceMode.style.display = 'block';
+            }
+        });
+    });
+
+    // ===== Interface base-structure upload =====
+    setupFileUpload('ai-interface-base-file', 'ai-interface-base', (fileType, data) => {
+        const infoDiv = document.getElementById('ai-interface-base-info');
+        if (!infoDiv) return;
+        const fi = data.file_info || {};
+        infoDiv.classList.remove('hidden');
+        infoDiv.innerHTML = `
+            <div class="file-info-content">
+                <strong>${fi.filename || 'Uploaded'}</strong>
+                ${fi.composition ? ` — ${fi.composition}` : ''}
+                ${fi.n_atoms ? ` (${fi.n_atoms} atoms)` : ''}
+            </div>
+        `;
+        state.uploadedFiles['ai-interface-base'] = fi;
+        // Enable generate button
+        const genBtn = document.getElementById('generate-interface-ai-btn');
+        if (genBtn) genBtn.disabled = false;
+        // Highlight pipeline step 1
+        const step1 = document.getElementById('pipe-step-1');
+        if (step1) { step1.classList.add('completed'); }
+    });
+
+    // ===== Generate interface button =====
+    const genIfaceBtn = document.getElementById('generate-interface-ai-btn');
+    if (genIfaceBtn) {
+        genIfaceBtn.addEventListener('click', handleAIInterfaceGeneration);
+    }
+
     // Custom atom count selector
     const numAtomsSelect = document.getElementById('ai-num-atoms');
     const customAtomsContainer = document.getElementById('custom-atoms-container');
@@ -1057,6 +1111,91 @@ function initializeAITab() {
     if (batchBtn) {
         batchBtn.addEventListener('click', handleBatchGeneration);
     }
+}
+
+/**
+ * Initialize model selector toggle cards
+ */
+function initializeModelSelector() {
+    const modelOptions = document.querySelectorAll('.model-option');
+    modelOptions.forEach(opt => {
+        opt.addEventListener('click', () => {
+            const modelKey = opt.dataset.model;
+            // Don't switch if model is unavailable
+            const entry = state.availableModels[modelKey];
+            if (entry && !entry.available) {
+                showMessage(`Model "${entry.label}" is not available: ${entry.error || 'unknown error'}`, 'error');
+                return;
+            }
+            // Toggle active
+            modelOptions.forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
+            const radio = opt.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+            state.selectedModel = modelKey;
+            updateModelInfoPanel(modelKey);
+            // Update pipeline label
+            const pipeLabel = document.getElementById('pipe-model-label');
+            if (pipeLabel) {
+                pipeLabel.textContent = entry ? entry.label.split('+')[0].trim() : modelKey;
+            }
+        });
+    });
+}
+
+/**
+ * Update the About the AI Models info panel when model changes
+ */
+function updateModelInfoPanel(modelKey) {
+    const entry = state.availableModels[modelKey];
+    if (!entry) return;
+
+    const elModel = document.getElementById('info-active-model');
+    const elArch = document.getElementById('info-architecture');
+    const elSampling = document.getElementById('info-sampling');
+    const elSpeed = document.getElementById('info-gen-speed');
+
+    if (elModel) elModel.textContent = entry.label;
+    if (elArch) elArch.textContent = entry.architecture === 'painn' ? 'PaiNN (angular-aware)' : 'EGNN (distance-based)';
+    if (elSampling) elSampling.textContent = entry.diffusion_type === 'flow_matching'
+        ? 'Flow Matching (50-step ODE)'
+        : 'DDPM / DDIM (200 steps)';
+    if (elSpeed) elSpeed.textContent = entry.diffusion_type === 'flow_matching'
+        ? '~1-3 seconds/structure'
+        : '~2-5 seconds/structure';
+}
+
+/**
+ * Update model status dots after we know availability
+ */
+function updateModelStatusDots(modelsData) {
+    if (!modelsData) return;
+    for (const m of modelsData) {
+        state.availableModels[m.key] = m;
+
+        const statusEl = document.getElementById(`model-status-${m.key}`);
+        const optEl = document.getElementById(`model-opt-${m.key}`);
+        if (statusEl) {
+            const dot = statusEl.querySelector('.status-dot');
+            const text = statusEl.querySelector('.status-text');
+            if (m.available) {
+                dot.classList.add('available');
+                dot.classList.remove('unavailable');
+                const params = m.num_parameters ? ` (${(m.num_parameters / 1e6).toFixed(1)}M params)` : '';
+                const epoch = m.epoch ? `, epoch ${m.epoch}` : '';
+                text.textContent = `Ready${params}${epoch}`;
+            } else {
+                dot.classList.add('unavailable');
+                dot.classList.remove('available');
+                text.textContent = m.error || 'Not available';
+                if (optEl) optEl.classList.add('disabled');
+            }
+        }
+    }
+    // Update count
+    const countEl = document.getElementById('info-models-count');
+    const nAvail = modelsData.filter(m => m.available).length;
+    if (countEl) countEl.textContent = `${nAvail} of ${modelsData.length}`;
 }
 
 /**
@@ -1097,6 +1236,27 @@ async function checkAIAvailability() {
             if (unavailableDiv) unavailableDiv.style.display = 'none';
             
             console.log('AI Module Info:', data);
+            
+            // Update GNN status panel
+            updateGNNStatus(data);
+
+            // Update model selector statuses
+            if (data.available_models) {
+                updateModelStatusDots(data.available_models);
+                // If current selection is unavailable, auto-switch to default
+                const activeEntry = state.availableModels[state.selectedModel];
+                if (!activeEntry || !activeEntry.available) {
+                    const defaultKey = data.default_model || 'egnn';
+                    state.selectedModel = defaultKey;
+                    // UI update
+                    document.querySelectorAll('.model-option').forEach(o => {
+                        o.classList.toggle('active', o.dataset.model === defaultKey);
+                        const r = o.querySelector('input[type="radio"]');
+                        if (r) r.checked = o.dataset.model === defaultKey;
+                    });
+                }
+                updateModelInfoPanel(state.selectedModel);
+            }
         } else {
             const errorDetail = (data && data.error) ? data.error : `AI module not available (HTTP ${response.status})`;
             const checkpointPath = data && data.checkpoint_path ? data.checkpoint_path : null;
@@ -1177,7 +1337,7 @@ async function handleAIGeneration() {
     progressDiv.style.display = 'block';
     resultsDiv.classList.add('hidden');
     progressFill.style.width = '0%';
-    progressText.textContent = `Generating ${numSamples} structures with ${numAtoms} carbon atoms...`;
+    progressText.textContent = `Generating ${numSamples} structures with ${numAtoms} carbon atoms (${state.selectedModel})...`;
     
     // Animate progress
     let progress = 0;
@@ -1194,7 +1354,8 @@ async function handleAIGeneration() {
             body: JSON.stringify({
                 num_atoms: numAtoms,
                 num_samples: numSamples,
-                output_format: outputFormat
+                output_format: outputFormat,
+                model: state.selectedModel
             })
         });
         
@@ -1212,6 +1373,10 @@ async function handleAIGeneration() {
             setTimeout(() => {
                 progressDiv.style.display = 'none';
                 displayGenerationResults(data);
+                // Auto-show first structure in 3D viewer
+                if (state.currentStructures.length > 0) {
+                    viewStructure(0);
+                }
             }, 1000);
             
             showMessage(`Generated ${data.num_generated} structures successfully!`, 'success');
@@ -1269,6 +1434,10 @@ function displayGenerationResults(data) {
         <h3>Generation Results</h3>
         <div class="info-grid" style="margin-bottom: 2rem;">
             <div class="info-item">
+                <span class="info-label">Model Used:</span>
+                <span class="info-value">${data.model_label || data.model || 'EGNN + DDPM'}</span>
+            </div>
+            <div class="info-item">
                 <span class="info-label">Structures Generated:</span>
                 <span class="info-value">${data.num_generated}</span>
             </div>
@@ -1308,6 +1477,589 @@ async function handleBatchGeneration() {
 }
 
 /**
+ * Update GNN status badge and info panel
+ */
+function updateGNNStatus(data) {
+    const badge = document.getElementById('gnn-status-badge');
+    const infoText = document.getElementById('gnn-info-text');
+
+    const hasRefiner = data && data.local_refiner_available;
+    const isTrained = data && data.local_refiner_trained;
+    const refinerError = data && data.local_refiner_error;
+
+    if (badge) {
+        badge.classList.remove('gnn-available', 'gnn-untrained', 'gnn-unavailable');
+        if (hasRefiner && isTrained) {
+            badge.classList.add('gnn-available');
+            badge.textContent = 'GNN ✓';
+        } else if (hasRefiner && !isTrained) {
+            badge.classList.add('gnn-untrained');
+            badge.textContent = 'GNN (untrained)';
+        } else {
+            badge.classList.add('gnn-unavailable');
+            badge.textContent = 'GNN —';
+        }
+    }
+
+    if (infoText) {
+        if (hasRefiner && isTrained) {
+            infoText.textContent = 'Local GNN refiner is loaded with a trained checkpoint. Interface structures will be refined automatically.';
+        } else if (hasRefiner && !isTrained) {
+            infoText.textContent = 'Local GNN is loaded but no trained checkpoint was found. The GNN defaults to near-zero displacements (safe pass-through). You can still generate interfaces.';
+        } else if (refinerError) {
+            infoText.textContent = `Local GNN unavailable: ${refinerError}. Interface generation will proceed without local refinement.`;
+        } else {
+            infoText.textContent = 'Local GNN not configured (no INTERFACEML_LOCAL_GNN_CHECKPOINT set). Interface generation will proceed without local refinement.';
+        }
+    }
+}
+
+/**
+ * Handle AI interface (fullerene + perovskite) generation
+ */
+async function handleAIInterfaceGeneration() {
+    if (!state.aiAvailable) {
+        showMessage('AI module is not available', 'error');
+        return;
+    }
+
+    // Check base file uploaded
+    const baseInfo = state.uploadedFiles['ai-interface-base'];
+    if (!baseInfo || !baseInfo.filename) {
+        showMessage('Please upload a perovskite base structure first', 'error');
+        return;
+    }
+
+    // Parse Miller index
+    const millerStr = document.getElementById('ai-iface-miller').value.trim();
+    const millerParts = millerStr.split(/[\s,]+/).map(Number);
+    if (millerParts.length !== 3 || millerParts.some(isNaN)) {
+        showMessage('Miller index must be three integers (e.g. 0 0 1)', 'error');
+        return;
+    }
+
+    // Parse supercell
+    const supercellVal = document.getElementById('ai-iface-supercell').value;
+    let supercellXY = null;
+    if (supercellVal !== 'auto') {
+        const parts = supercellVal.split(',').map(Number);
+        if (parts.length === 2) supercellXY = parts;
+    }
+
+    // Parse xy_frac
+    const xyFracX = parseFloat(document.getElementById('ai-iface-xy-frac-x').value) || 0.5;
+    const xyFracY = parseFloat(document.getElementById('ai-iface-xy-frac-y').value) || 0.5;
+
+    // Parse termination
+    const terminationVal = document.getElementById('ai-iface-termination').value;
+    const termination = terminationVal === 'auto' ? null : terminationVal;
+
+    // Build request payload
+    const payload = {
+        base_filename: baseInfo.filename,
+        num_atoms: parseInt(document.getElementById('ai-iface-num-atoms').value),
+        num_samples: parseInt(document.getElementById('ai-iface-num-samples').value) || 1,
+        miller: millerParts,
+        slab_thickness: parseFloat(document.getElementById('ai-iface-slab-thickness').value),
+        vacuum: parseFloat(document.getElementById('ai-iface-vacuum').value),
+        separation: parseFloat(document.getElementById('ai-iface-separation').value),
+        buffer: parseFloat(document.getElementById('ai-iface-buffer').value),
+        layer_tol: parseFloat(document.getElementById('ai-iface-layer-tol').value),
+        xy_frac: [xyFracX, xyFracY],
+        supercell_xy: supercellXY,
+        termination: termination,
+        ddim: document.getElementById('ai-iface-ddim').checked,
+        local_refine: document.getElementById('ai-iface-local-refine').checked,
+        refine_scope: document.getElementById('ai-iface-refine-scope').value,
+        model: state.selectedModel,
+    };
+
+    // Show progress
+    const progressDiv = document.getElementById('ai-iface-progress');
+    const progressFill = document.getElementById('ai-iface-progress-fill');
+    const progressText = document.getElementById('ai-iface-progress-text');
+    const resultsDiv = document.getElementById('ai-iface-results');
+
+    progressDiv.style.display = 'block';
+    resultsDiv.classList.add('hidden');
+    progressFill.style.width = '0%';
+    const modelLabel = (state.availableModels[state.selectedModel] || {}).label || state.selectedModel;
+    progressText.textContent = `Generating fullerene via ${modelLabel}...`;
+
+    // Animate pipeline steps
+    setPipelineStep(2);
+
+    let progress = 0;
+    const descriptions = [
+        { at: 10, text: `Generating fullerene via ${modelLabel}...` },
+        { at: 35, text: 'Building perovskite slab...' },
+        { at: 55, text: 'Placing fullerene on slab surface...' },
+        { at: 75, text: 'Running local GNN refinement...' },
+        { at: 90, text: 'Finalizing interface structure...' },
+    ];
+    const progressInterval = setInterval(() => {
+        progress += 1.5;
+        if (progress > 95) progress = 95;
+        progressFill.style.width = progress + '%';
+        for (const d of descriptions) {
+            if (progress >= d.at && progress < d.at + 2) {
+                progressText.textContent = d.text;
+                // Update pipeline display
+                if (d.at === 10) setPipelineStep(2);
+                if (d.at === 35) setPipelineStep(3);
+                if (d.at === 75) setPipelineStep(4);
+            }
+        }
+    }, 150);
+
+    try {
+        const numSamples = parseInt(document.getElementById('ai-iface-num-samples').value) || 1;
+        const useAsync = numSamples > 1;
+
+        if (useAsync) {
+            // --- Async path: submit task, poll for completion ---
+            const submitResp = await fetch('/api/ai/generate-interface-async', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const submitData = await submitResp.json();
+
+            if (!submitResp.ok || submitData.status !== 'accepted') {
+                throw new Error(submitData.error || 'Failed to submit async task');
+            }
+
+            const taskId = submitData.task_id;
+            const pollUrl = submitData.poll_url;
+            progressText.textContent = `Task submitted (${numSamples} samples). Polling for results...`;
+
+            // Poll every 2s until done
+            const pollResult = await new Promise((resolve, reject) => {
+                const pollTimer = setInterval(async () => {
+                    try {
+                        const pollResp = await fetch(pollUrl);
+                        const pollData = await pollResp.json();
+
+                        if (pollData.state === 'STARTED') {
+                            progressText.textContent = `Generating ${numSamples} interface structures...`;
+                            if (progress < 80) { progress = 50; progressFill.style.width = '50%'; }
+                            setPipelineStep(3);
+                        } else if (pollData.state === 'SUCCESS') {
+                            clearInterval(pollTimer);
+                            resolve(pollData.result);
+                        } else if (pollData.state === 'FAILURE') {
+                            clearInterval(pollTimer);
+                            reject(new Error(pollData.error || 'Task failed'));
+                        } else if (pollData.state === 'NOT_FOUND') {
+                            clearInterval(pollTimer);
+                            reject(new Error('Task not found'));
+                        }
+                        // else PENDING — keep polling
+                    } catch (e) {
+                        clearInterval(pollTimer);
+                        reject(e);
+                    }
+                }, 2000);
+            });
+
+            clearInterval(progressInterval);
+            progressFill.style.width = '100%';
+
+            if (pollResult.status === 'success') {
+                progressText.textContent = '✓ Interface structures generated!';
+                setPipelineStep(5);
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                    displayInterfaceResults(pollResult);
+                }, 1000);
+                showMessage(`Interface structure(s) generated (${pollResult.num_samples} sample(s), ${pollResult.n_atoms} atoms each) in ${pollResult.generation_time}s`, 'success');
+            } else {
+                throw new Error(pollResult.error || 'Generation failed');
+            }
+
+        } else {
+            // --- Sync path: single sample, direct call ---
+            const response = await fetch('/api/ai/generate-interface', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            clearInterval(progressInterval);
+            progressFill.style.width = '100%';
+
+            if (response.ok && data.status === 'success') {
+                progressText.textContent = '✓ Interface generated successfully!';
+                setPipelineStep(5); // all complete
+
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                    displayInterfaceResults(data);
+                }, 1000);
+
+                showMessage(`Interface structure(s) generated (${data.num_samples} sample(s), ${data.n_atoms} atoms each) in ${data.generation_time}s`, 'success');
+            } else {
+                throw new Error(data.error || 'Interface generation failed');
+            }
+        }
+    } catch (error) {
+        clearInterval(progressInterval);
+        progressDiv.style.display = 'none';
+        resetPipelineSteps();
+        showMessage(`Interface generation failed: ${error.message}`, 'error');
+        console.error('Interface generation error:', error);
+    }
+}
+
+/**
+ * Set pipeline step state: marks steps up to `step` as completed, current step as active
+ */
+function setPipelineStep(step) {
+    for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`pipe-step-${i}`);
+        if (!el) continue;
+        el.classList.remove('active', 'completed');
+        if (i < step) el.classList.add('completed');
+        else if (i === step) el.classList.add('active');
+    }
+}
+
+function resetPipelineSteps() {
+    for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`pipe-step-${i}`);
+        if (el) el.classList.remove('active', 'completed');
+    }
+    // Re-mark step 1 if base is uploaded
+    if (state.uploadedFiles['ai-interface-base']) {
+        const step1 = document.getElementById('pipe-step-1');
+        if (step1) step1.classList.add('completed');
+    }
+}
+
+/**
+ * Display interface generation results (supports batch samples)
+ */
+function displayInterfaceResults(data) {
+    const resultsDiv = document.getElementById('ai-iface-results');
+    resultsDiv.classList.remove('hidden');
+
+    const samples = data.samples || [{
+        sample_index: 0,
+        download_url: data.download_url,
+        n_atoms: data.n_atoms,
+        metadata: data.metadata,
+    }];
+
+    const numSamples = samples.length;
+    const batchHeader = numSamples > 1
+        ? `<div class="batch-header"><h3>✅ ${numSamples} Interface Structures Generated</h3>
+             <span class="meta-value">${data.generation_time}s total</span></div>`
+        : '';
+
+    let cardsHtml = '';
+    for (const sample of samples) {
+        const meta = sample.metadata || {};
+        const supercell = meta.supercell || {};
+        const refinerUsed = meta.local_refiner_used ? 'Yes' : 'No';
+        const refinerTrained = meta.local_refiner_trained ? 'Yes (trained)' : 'No (default pass-through)';
+        const termTop = (meta.termination_top || []).join(', ') || '—';
+        const termBot = (meta.termination_bottom || []).join(', ') || '—';
+        const sampleLabel = numSamples > 1 ? ` — Sample #${sample.sample_index + 1}` : '';
+        const refinerWarn = data.local_refiner_error
+            ? `<div class="gnn-info-panel" style="margin-top:0.5rem; border-left-color: #f59e0b;">
+                 ⚠️ Local GNN note: ${data.local_refiner_error}
+               </div>`
+            : '';
+
+        cardsHtml += `
+            <div class="interface-result-card">
+                <h3>✅ Interface Structure${sampleLabel}</h3>
+
+                <div class="interface-meta-grid">
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Model</span>
+                        <span class="meta-value">${data.model_label || data.model || '—'}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Total Atoms</span>
+                        <span class="meta-value">${sample.n_atoms}</span>
+                    </div>
+                    ${numSamples === 1 ? `<div class="interface-meta-item">
+                        <span class="meta-label">Generation Time</span>
+                        <span class="meta-value">${data.generation_time}s</span>
+                    </div>` : ''}
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Supercell</span>
+                        <span class="meta-value">${supercell.nx || '?'}×${supercell.ny || '?'}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Termination</span>
+                        <span class="meta-value">${meta.termination || 'auto'}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Top Species</span>
+                        <span class="meta-value">${termTop}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Bottom Species</span>
+                        <span class="meta-value">${termBot}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">GNN Refiner Used</span>
+                        <span class="meta-value">${refinerUsed}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">GNN Trained</span>
+                        <span class="meta-value">${refinerTrained}</span>
+                    </div>
+                    <div class="interface-meta-item">
+                        <span class="meta-label">Base Structure</span>
+                        <span class="meta-value">${data.base_filename || '—'}</span>
+                    </div>
+                </div>
+
+                ${refinerWarn}
+
+                <div class="interface-download-bar">
+                    <a href="${sample.download_url}" class="btn btn-primary btn-sm" download>
+                        💾 Download VASP (POSCAR)
+                    </a>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">
+                        File: ${sample.download_url.split('/').pop()}
+                    </span>
+                </div>
+            </div>
+        `;
+    }
+
+    resultsDiv.innerHTML = batchHeader + cardsHtml;
+    resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/**
+ * ===== Three.js 3D Molecule Viewer =====
+ */
+let viewer3D = {
+    scene: null,
+    camera: null,
+    renderer: null,
+    controls: null,
+    animationId: null,
+    autoRotate: false,
+    moleculeGroup: null,
+    initialized: false,
+    renderMode: 'ball-stick',   // 'ball-stick' or 'wireframe'
+    currentPositions: null,
+    currentEdges: null,
+};
+
+function initViewer() {
+    if (viewer3D.initialized) return;
+
+    const canvas = document.getElementById('structure-canvas');
+    if (!canvas) {
+        console.error('Structure canvas element not found');
+        showMessage('Structure viewer canvas not found', 'error');
+        return;
+    }
+    if (typeof THREE === 'undefined') {
+        console.error('Three.js library not loaded');
+        showMessage('3D viewer library failed to load. Please check your network connection and refresh.', 'error');
+        return;
+    }
+
+    try {
+    const container = canvas.parentElement;
+    const w = container.clientWidth || 800;
+    const h = 500;
+
+    // Scene
+    viewer3D.scene = new THREE.Scene();
+    viewer3D.scene.background = new THREE.Color(0xf0f2f5);
+
+    // Camera
+    viewer3D.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 1000);
+    viewer3D.camera.position.set(0, 0, 15);
+
+    // Renderer
+    viewer3D.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    viewer3D.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    viewer3D.renderer.setSize(w, h);
+
+    // OrbitControls
+    if (typeof THREE.OrbitControls === 'undefined') {
+        console.error('OrbitControls not loaded');
+        showMessage('3D viewer controls failed to load. Please refresh.', 'error');
+        return;
+    }
+    viewer3D.controls = new THREE.OrbitControls(viewer3D.camera, canvas);
+    viewer3D.controls.enableDamping = true;
+    viewer3D.controls.dampingFactor = 0.08;
+    viewer3D.controls.rotateSpeed = 0.8;
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    viewer3D.scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 10, 7);
+    viewer3D.scene.add(dirLight);
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    backLight.position.set(-5, -5, -5);
+    viewer3D.scene.add(backLight);
+
+    viewer3D.moleculeGroup = new THREE.Group();
+    viewer3D.scene.add(viewer3D.moleculeGroup);
+    viewer3D.initialized = true;
+
+    // Animate loop
+    function animate() {
+        viewer3D.animationId = requestAnimationFrame(animate);
+        if (viewer3D.autoRotate) {
+            viewer3D.moleculeGroup.rotation.y += 0.005;
+        }
+        viewer3D.controls.update();
+        viewer3D.renderer.render(viewer3D.scene, viewer3D.camera);
+    }
+    animate();
+    console.log('3D viewer initialized successfully, canvas:', w, 'x', h);
+    } catch (err) {
+        console.error('Failed to initialize 3D viewer:', err);
+        showMessage('Failed to initialize 3D viewer: ' + err.message, 'error');
+    }
+}
+
+function loadMolecule(positions, edges) {
+    if (!viewer3D.initialized) initViewer();
+    if (!viewer3D.initialized || !viewer3D.moleculeGroup) {
+        console.error('3D viewer not initialized, cannot load molecule');
+        showMessage('3D viewer failed to initialize. Please check browser console for details.', 'error');
+        return;
+    }
+
+    // Store for render-mode switching
+    viewer3D.currentPositions = positions;
+    viewer3D.currentEdges = edges;
+    updateRenderModeButtons();
+
+    try {
+
+    // Clear previous molecule
+    while (viewer3D.moleculeGroup.children.length > 0) {
+        const child = viewer3D.moleculeGroup.children[0];
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+        viewer3D.moleculeGroup.remove(child);
+    }
+
+    if (!positions || positions.length === 0) return;
+
+    // ---- Resolve bonds (shared by both modes) ----
+    const n = positions.length;
+    let cx = 0, cy = 0, cz = 0;
+    for (const p of positions) { cx += p[0]; cy += p[1]; cz += p[2]; }
+    cx /= n; cy /= n; cz /= n;
+
+    let resolvedEdges = edges && edges.length > 0 ? edges : null;
+    if (!resolvedEdges) {
+        // Auto-detect bonds by distance (C-C bond ~1.4–1.6 Å)
+        resolvedEdges = [];
+        const maxBondDist2 = 1.85 * 1.85;
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                const dx = positions[i][0] - positions[j][0];
+                const dy = positions[i][1] - positions[j][1];
+                const dz = positions[i][2] - positions[j][2];
+                if (dx*dx + dy*dy + dz*dz <= maxBondDist2) {
+                    resolvedEdges.push([i, j]);
+                }
+            }
+        }
+    }
+
+    const mode = viewer3D.renderMode;
+
+    if (mode === 'wireframe') {
+        // ===== WIREFRAME / KEYLINE MODE =====
+        // Edges as thin bright lines, small vertex dots
+        const lineColor = 0x5b8def;
+        const vertexColor = 0x667eea;
+
+        // Build line segments geometry
+        const lineVerts = [];
+        for (const [i, j] of resolvedEdges) {
+            if (i >= n || j >= n) continue;
+            const p1x = positions[i][0] - cx, p1y = positions[i][1] - cy, p1z = positions[i][2] - cz;
+            const p2x = positions[j][0] - cx, p2y = positions[j][1] - cy, p2z = positions[j][2] - cz;
+            const len2 = (p1x-p2x)**2 + (p1y-p2y)**2 + (p1z-p2z)**2;
+            if (len2 < 0.0001 || len2 > 12.25) continue;
+            lineVerts.push(p1x, p1y, p1z, p2x, p2y, p2z);
+        }
+        if (lineVerts.length > 0) {
+            const lineGeo = new THREE.BufferGeometry();
+            lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
+            const lineMat = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
+            const lines = new THREE.LineSegments(lineGeo, lineMat);
+            viewer3D.moleculeGroup.add(lines);
+        }
+
+        // Carbon atom spheres (normal size for clarity)
+        const dotGeo = new THREE.SphereGeometry(0.25, 16, 12);
+        const dotMat = new THREE.MeshPhongMaterial({ color: vertexColor, shininess: 80, specular: 0x8899cc });
+        for (const p of positions) {
+            const dot = new THREE.Mesh(dotGeo, dotMat);
+            dot.position.set(p[0] - cx, p[1] - cy, p[2] - cz);
+            viewer3D.moleculeGroup.add(dot);
+        }
+    } else {
+        // ===== BALL & STICK MODE (default) =====
+        const atomMat = new THREE.MeshPhongMaterial({ color: 0x333333, shininess: 80, specular: 0x666666 });
+        const atomGeo = new THREE.SphereGeometry(0.25, 16, 12);
+        const bondMat = new THREE.MeshPhongMaterial({ color: 0x888888, shininess: 40 });
+
+        for (const p of positions) {
+            const mesh = new THREE.Mesh(atomGeo, atomMat);
+            mesh.position.set(p[0] - cx, p[1] - cy, p[2] - cz);
+            viewer3D.moleculeGroup.add(mesh);
+        }
+
+        for (const [i, j] of resolvedEdges) {
+            if (i >= n || j >= n) continue;
+            const p1 = new THREE.Vector3(positions[i][0] - cx, positions[i][1] - cy, positions[i][2] - cz);
+            const p2 = new THREE.Vector3(positions[j][0] - cx, positions[j][1] - cy, positions[j][2] - cz);
+            const len = p1.distanceTo(p2);
+            if (len < 0.01 || len > 3.5) continue;
+
+            const bondGeo = new THREE.CylinderGeometry(0.06, 0.06, len, 6, 1);
+            bondGeo.translate(0, len / 2, 0);
+            bondGeo.rotateX(Math.PI / 2);
+            const bond = new THREE.Mesh(bondGeo, bondMat);
+            bond.position.copy(p1);
+            bond.lookAt(p2);
+            viewer3D.moleculeGroup.add(bond);
+        }
+    }
+
+    // Fit camera
+    let maxR = 0;
+    for (const p of positions) {
+        const r = Math.sqrt((p[0]-cx)**2 + (p[1]-cy)**2 + (p[2]-cz)**2);
+        if (r > maxR) maxR = r;
+    }
+    viewer3D.camera.position.set(0, 0, Math.max(maxR * 2.8, 5));
+    viewer3D.camera.lookAt(0, 0, 0);
+    viewer3D.controls.target.set(0, 0, 0);
+    viewer3D.controls.update();
+    viewer3D.moleculeGroup.rotation.set(0, 0, 0);
+    console.log('Molecule loaded (' + mode + '):', positions.length, 'atoms, maxR:', maxR.toFixed(2));
+    } catch (err) {
+        console.error('Error loading molecule:', err);
+        showMessage('Error rendering 3D structure: ' + err.message, 'error');
+    }
+}
+
+/**
  * View structure in 3D viewer
  */
 function viewStructure(index) {
@@ -1317,6 +2069,7 @@ function viewStructure(index) {
     const viewerDiv = document.getElementById('ai-viewer');
     const viewerInfo = document.getElementById('viewer-info');
     
+    // Make viewer visible first
     viewerDiv.classList.remove('hidden');
     viewerInfo.innerHTML = `
         <div class="info-grid">
@@ -1324,13 +2077,26 @@ function viewStructure(index) {
                 <span class="info-label">Filename:</span>
                 <span class="info-value">${struct.filename}</span>
             </div>
+            <div class="info-item">
+                <span class="info-label">Atoms:</span>
+                <span class="info-value">${struct.num_atoms || '?'}</span>
+            </div>
         </div>
     `;
     
     // Scroll to viewer
     viewerDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    
-    showMessage('3D visualization requires additional libraries (Three.js)', 'info');
+
+    // Wait for browser reflow so the viewer div has proper dimensions,
+    // then initialize/render the 3D molecule
+    requestAnimationFrame(() => {
+        if (struct.positions && struct.positions.length > 0) {
+            console.log('Loading molecule with', struct.positions.length, 'atoms,', (struct.edges || []).length, 'edges');
+            loadMolecule(struct.positions, struct.edges);
+        } else {
+            showMessage('No position data available for 3D view', 'warning');
+        }
+    });
 }
 
 /**
@@ -1353,15 +2119,43 @@ function toggleAdvanced(id) {
  * Structure viewer controls
  */
 function rotateStructure() {
-    showMessage('Auto-rotation enabled', 'info');
+    if (!viewer3D.initialized) return;
+    viewer3D.autoRotate = !viewer3D.autoRotate;
+    showMessage(viewer3D.autoRotate ? 'Auto-rotation enabled' : 'Auto-rotation disabled', 'info');
 }
 
 function resetView() {
-    showMessage('View reset to default', 'info');
+    if (!viewer3D.initialized) return;
+    viewer3D.moleculeGroup.rotation.set(0, 0, 0);
+    viewer3D.camera.position.set(0, 0, 15);
+    viewer3D.camera.lookAt(0, 0, 0);
+    viewer3D.controls.target.set(0, 0, 0);
+    viewer3D.controls.update();
+    viewer3D.autoRotate = false;
+    showMessage('View reset', 'info');
 }
 
 function downloadCurrent() {
     if (state.currentStructures.length > 0) {
         window.location.href = state.currentStructures[0].download_url;
     }
+}
+
+/**
+ * Switch render mode between ball-stick and wireframe
+ */
+function setRenderMode(mode) {
+    if (mode !== 'ball-stick' && mode !== 'wireframe') return;
+    viewer3D.renderMode = mode;
+    updateRenderModeButtons();
+    if (viewer3D.currentPositions && viewer3D.currentPositions.length > 0) {
+        loadMolecule(viewer3D.currentPositions, viewer3D.currentEdges);
+    }
+}
+
+function updateRenderModeButtons() {
+    const btnBall = document.getElementById('btn-ball-stick');
+    const btnWire = document.getElementById('btn-wireframe');
+    if (btnBall) btnBall.classList.toggle('viewer-btn-active', viewer3D.renderMode === 'ball-stick');
+    if (btnWire) btnWire.classList.toggle('viewer-btn-active', viewer3D.renderMode === 'wireframe');
 }

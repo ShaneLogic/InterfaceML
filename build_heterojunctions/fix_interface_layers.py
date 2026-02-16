@@ -17,9 +17,12 @@ Requirements: pymatgen, numpy
 """
 
 import argparse
+import logging
 import numpy as np
 from pymatgen.core import Structure
 from pymatgen.io.vasp import Poscar
+
+logger = logging.getLogger(__name__)
 
 # Shared utilities (engineering refactor):
 # - Keep the CLI behavior unchanged
@@ -200,14 +203,14 @@ def print_fixed_atoms_by_z_layers(
             molecule_elements = {"C", "N", "H"}
         fixed = _include_whole_molecules(structure, fixed, molecule_elements=set(molecule_elements))
     if debug:
-        print(f"Detected {len(layers)} layers | tol_used={tol_used:.3f} Å")
+        logger.info("Detected %d layers | tol_used=%.3f \u00c5", len(layers), tol_used)
         for k, layer in enumerate(layers[: min(10, len(layers))], start=1):
             zs = structure.cart_coords[np.array(layer, dtype=int), 2]
-            print(f" - Layer {k}: {len(layer)} atoms | z_range=[{zs.min():.3f}, {zs.max():.3f}]")
+            logger.info(" - Layer %d: %d atoms | z_range=[%.3f, %.3f]", k, len(layer), zs.min(), zs.max())
         if len(layers) > 10:
-            print(" - ... (more layers omitted)")
+            logger.info(" - ... (more layers omitted)")
 
-    print("FIXED_ATOMS LIST:", layer_indices_to_string(fixed, one_based=one_based_output))
+    logger.info("FIXED_ATOMS LIST: %s", layer_indices_to_string(fixed, one_based=one_based_output))
     return fixed
 
 def identify_interface_z(structure, method='density_gap'):
@@ -331,27 +334,27 @@ def add_selective_dynamics(poscar_file, output_file, n_layers_per_side=1,
         layer_thickness: Thickness threshold for defining a layer (Angstroms)
         interface_method: Method to identify interface ('density_gap', 'median', or 'max_gap')
     """
-    print(f"Reading POSCAR file: {poscar_file}")
+    logger.info("Reading POSCAR file: %s", poscar_file)
     structure = load_structure_any(poscar_file)
     
-    print(f"Structure contains {len(structure)} atoms")
-    print(f"Lattice parameters: {structure.lattice.abc}")
+    logger.info("Structure contains %d atoms", len(structure))
+    logger.info("Lattice parameters: %s", structure.lattice.abc)
     
     # Identify interface position
     interface_z = identify_interface_z(structure, method=interface_method)
-    print(f"Identified interface at z = {interface_z:.4f} Å")
+    logger.info("Identified interface at z = %.4f Å", interface_z)
     
     # Find z-coordinate range
     z_coords = structure.cart_coords[:, 2]
     z_min, z_max = z_coords.min(), z_coords.max()
-    print(f"Z-coordinate range: {z_min:.4f} - {z_max:.4f} Å")
+    logger.info("Z-coordinate range: %.4f - %.4f Å", z_min, z_max)
     
     # Find interface layers to relax
     relaxed_indices = find_interface_layers(structure, interface_z, 
                                            n_layers_per_side=n_layers_per_side,
                                            layer_thickness=layer_thickness)
     
-    print(f"Found {len(relaxed_indices)} atoms in interface layers to relax")
+    logger.info("Found %d atoms in interface layers to relax", len(relaxed_indices))
     
     # Create Selective Dynamics flags
     # T T T = free (relax), F F F = fixed
@@ -369,14 +372,14 @@ def add_selective_dynamics(poscar_file, output_file, n_layers_per_side=1,
     poscar = Poscar(structure)
     poscar.write_file(output_file)
     
-    print(f"✓ Written POSCAR with Selective Dynamics to: {output_file}")
-    print(f"  Relaxed atoms: {len(relaxed_indices)} (interface layers)")
-    print(f"  Fixed atoms: {len(structure) - len(relaxed_indices)} (all other layers)")
+    logger.info("Written POSCAR with Selective Dynamics to: %s", output_file)
+    logger.info("  Relaxed atoms: %d (interface layers)", len(relaxed_indices))
+    logger.info("  Fixed atoms: %d (all other layers)", len(structure) - len(relaxed_indices))
     
     # Print some statistics
     relaxed_z_coords = [z_coords[i] for i in relaxed_indices]
     if len(relaxed_z_coords) > 0:
-        print(f"  Relaxed layer z-range: {min(relaxed_z_coords):.4f} - {max(relaxed_z_coords):.4f} Å")
+        logger.info("  Relaxed layer z-range: %.4f - %.4f \u00c5", min(relaxed_z_coords), max(relaxed_z_coords))
 
 
 def add_selective_dynamics_by_layers(
@@ -401,17 +404,17 @@ def add_selective_dynamics_by_layers(
     fixed_layers
         Layer numbers to fix. Uses 1-based layer numbering in the CLI (Layer 1 = bottom layer).
     """
-    print(f"Reading POSCAR file: {poscar_file}")
+    logger.info("Reading POSCAR file: %s", poscar_file)
     structure = load_structure_any(poscar_file)
-    print(f"Structure contains {len(structure)} atoms")
+    logger.info("Structure contains %d atoms", len(structure))
 
     groups = split_stack_layers(structure, n_interfaces=n_interfaces, min_gap=min_gap)
     if len(groups) < 2:
         raise ValueError("Failed to split into multiple layers. Try lowering --min_gap or check the structure.")
 
-    print(f"Detected {len(groups)} layers for n_interfaces={n_interfaces} (expected {n_interfaces + 1})")
+    logger.info("Detected %d layers for n_interfaces=%d (expected %d)", len(groups), n_interfaces, n_interfaces + 1)
     for k, idxs in enumerate(groups, start=1):
-        print(f" - Layer {k}: {len(idxs)} atoms")
+        logger.info(" - Layer %d: %d atoms", k, len(idxs))
 
     # Convert fixed layer numbers to a set of indices.
     fixed_layer_set = set(int(x) for x in fixed_layers)
@@ -419,8 +422,8 @@ def add_selective_dynamics_by_layers(
         raise ValueError(f"fixed_layers must be between 1 and {len(groups)}")
 
     fixed_indices = sorted({i for k, idxs in enumerate(groups, start=1) if k in fixed_layer_set for i in idxs})
-    print(f"Fixed atom count: {len(fixed_indices)}")
-    print("FIXED_ATOMS LIST:", layer_indices_to_string(fixed_indices, one_based=one_based_output))
+    logger.info("Fixed atom count: %d", len(fixed_indices))
+    logger.info("FIXED_ATOMS LIST: %s", layer_indices_to_string(fixed_indices, one_based=one_based_output))
 
     if print_only:
         return
@@ -435,7 +438,7 @@ def add_selective_dynamics_by_layers(
             sel.append([True, True, True])
     structure.add_site_property("selective_dynamics", sel)
     Poscar(structure).write_file(output_file)
-    print(f"✓ Written POSCAR with Selective Dynamics to: {output_file}")
+    logger.info("Written POSCAR with Selective Dynamics to: %s", output_file)
 
 
 def main():
@@ -583,15 +586,15 @@ def main():
                 print_only=bool(args.print_only),
             )
         else:
-        add_selective_dynamics(
-            args.input_file,
-            args.output_file,
-            n_layers_per_side=args.n_layers,
-            layer_thickness=args.layer_thickness,
-            interface_method=args.interface_method
-        )
+            add_selective_dynamics(
+                args.input_file,
+                args.output_file,
+                n_layers_per_side=args.n_layers,
+                layer_thickness=args.layer_thickness,
+                interface_method=args.interface_method
+            )
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Error: %s", e)
         import traceback
         traceback.print_exc()
         return 1
@@ -600,4 +603,9 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     exit(main())

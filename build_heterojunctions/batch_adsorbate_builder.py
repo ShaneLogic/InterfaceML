@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import random
 import re
 import shlex
@@ -23,6 +24,8 @@ import numpy as np
 
 from interfaceml.core import io
 from interfaceml.core import adsorbate as adsorbate_core
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_miller(value: str) -> Tuple[int, int, int]:
@@ -211,11 +214,11 @@ def main() -> None:
     xy_grid = _parse_supercell(args.xy_grid) if args.xy_grid else None
 
     if args.dry_run:
-        print(f"Planned jobs: {len(pairs)}")
+        logger.info("Planned jobs: %d", len(pairs))
         for idx, (p_path, f_path) in enumerate(pairs[:10], 1):
-            print(f"{idx:04d}: {p_path.name} + {f_path.name}")
+            logger.info("%04d: %s + %s", idx, p_path.name, f_path.name)
         if len(pairs) > 10:
-            print("... (truncated)")
+            logger.info("... (truncated)")
         return
 
     orientation_mats = _rotation_matrices(args.orientation_mode, args.orientation_samples, np_rng)
@@ -377,9 +380,14 @@ def main() -> None:
             except Exception as exc:
                 record_base.update({"status": "failed", "error": str(exc)})
                 _write_record(meta_fp, record_base)
-                print(f"[{idx}/{len(pairs)}] Failed: {p_path.name} + {f_path.name} -> {exc}")
+                logger.error("[%d/%d] Failed: %s + %s -> %s", idx, len(pairs), p_path.name, f_path.name, exc)
                 continue
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     main()

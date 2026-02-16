@@ -4,7 +4,7 @@
 
 **Professional Heterojunction Modeling Platform**
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Pymatgen](https://img.shields.io/badge/Powered%20by-Pymatgen-orange)](https://pymatgen.org/)
 
@@ -53,7 +53,7 @@ InterfaceML provides a complete suite of tools for heterojunction modeling with 
 ## Installation
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.9 or higher
 - pip or conda package manager
 
 ### Install from source
@@ -71,7 +71,7 @@ pip install -r requirements.txt
 ```
 
 ### Core Dependencies
-- `numpy >= 1.20.0`
+- `numpy >= 1.22.0`
 - `pymatgen >= 2022.0.0`
 - `flask >= 2.0.0` (for web interface)
 - `flask-cors >= 3.0.0` (for web interface)
@@ -202,6 +202,33 @@ interfaceml-web
 
 If the fullerene diffusion checkpoint is available, you can generate a
 perovskite/fullerene interface directly through the web API:
+
+#### AI Setup (Required for the AI tab)
+
+The AI module depends on PyTorch + PyTorch Geometric and is not installed
+with the default `requirements.txt`. Recommended Python: 3.10 or 3.11.
+
+```bash
+# Option A: install optional AI dependencies
+pip install -e ".[ai]"
+
+# Option B: install fullerene module requirements directly
+pip install -r requirements.txt
+pip install -r fullerene_e3gen/requirements.txt
+```
+
+If PyTorch/PyG installation fails for your platform, follow their official
+installation guidance for your CUDA/CPU stack.
+
+You can override the AI asset locations with:
+- `INTERFACEML_FULLERENE_PATH`
+- `INTERFACEML_FULLERENE_CHECKPOINT`
+
+To start the web app with a specific Python environment:
+
+```bash
+INTERFACEML_PYTHON=/path/to/python ./start_web.sh
+```
 
 ```json
 POST /api/ai/generate-interface

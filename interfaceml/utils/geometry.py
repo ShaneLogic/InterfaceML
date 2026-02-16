@@ -111,7 +111,9 @@ def estimate_molecule_diameter(coords: np.ndarray) -> float:
         # Compute all pairwise distances at once using broadcasting
         diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
         distances = np.linalg.norm(diff, axis=2)
-        return float(np.max(distances))
+        # Use nanmax to be robust against NaN values from diffusion models
+        result = float(np.nanmax(distances))
+        return result if np.isfinite(result) else 0.0
     
     # For small molecules, simple loop is fine and more memory-efficient
     max_dist = 0.0

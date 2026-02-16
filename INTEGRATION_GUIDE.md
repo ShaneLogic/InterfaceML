@@ -42,14 +42,14 @@ AI features:
 
 ```bash
 cd /path/to/InterfaceML
-ls fullerene_diffusion_poc/checkpoints/best_model.pt
+ls fullerene_e3gen/checkpoints/best_model.pt
 ```
 
 2. Optional environment overrides:
 
 ```bash
 # Override the AI module location
-export INTERFACEML_FULLERENE_PATH=/path/to/fullerene_diffusion_poc
+export INTERFACEML_FULLERENE_PATH=/path/to/fullerene_e3gen
 
 # Override the checkpoint path
 export INTERFACEML_FULLERENE_CHECKPOINT=/path/to/best_model.pt
@@ -144,7 +144,7 @@ Key files:
 The AI module loads from the following layout:
 
 ```
-fullerene_diffusion_poc/
+fullerene_e3gen/
 |-- checkpoints/
 |   `-- best_model.pt          # Main checkpoint (required)
 |-- api.py                      # Python API

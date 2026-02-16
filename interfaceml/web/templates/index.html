@@ -6,6 +6,8 @@
     <title>InterfaceML - Heterojunction Modeling Platform</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <!-- Header -->
@@ -209,11 +211,11 @@
                         <div>
                             <h2 class="panel-title">
                                 <span class="ai-badge">AI</span>
-                                Fullerene Structure Generation
+                                AI-Powered Structure Generation
                             </h2>
                             <p class="panel-description">
-                                Generate fullerene molecular structures using deep learning.
-                                Powered by Enhanced Equivariant Graph Neural Networks (EGNN) and Diffusion Models.
+                                Generate fullerene structures and fullerene–perovskite interfaces using deep learning.
+                                Select from multiple model backends — EGNN+DDPM or PaiNN+Flow Matching — for comparison.
                             </p>
                         </div>
                         <div class="ai-status" id="ai-status">
@@ -225,140 +227,425 @@
                     </div>
 
                     <div class="ai-content" id="ai-content-main">
-                        <!-- Generation Parameters -->
+
+                        <!-- Model Selector (shared across modes) -->
                         <div class="form-section">
-                            <h3>Generation Parameters</h3>
-                            <div class="param-grid">
-                                <div class="param-item">
-                                    <label for="ai-num-atoms">Carbon Atoms</label>
-                                    <select id="ai-num-atoms" class="form-control">
-                                        <option value="60" selected>C60 (Buckminsterfullerene)</option>
-                                        <option value="70">C70 (Rugby ball)</option>
-                                        <option value="80">C80</option>
-                                        <option value="84">C84</option>
-                                        <option value="100">C100</option>
-                                        <option value="custom">Custom...</option>
-                                    </select>
-                                </div>
-                                <div class="param-item" id="custom-atoms-container" style="display: none;">
-                                    <label for="ai-custom-atoms">Custom Atom Count</label>
-                                    <input type="number" id="ai-custom-atoms" class="form-control" 
-                                           value="60" min="20" max="240" step="2">
-                                    <span class="param-hint">Must be even, 20-240 atoms</span>
-                                </div>
-                                <div class="param-item">
-                                    <label for="ai-num-samples">Number of Structures</label>
-                                    <input type="number" id="ai-num-samples" class="form-control" 
-                                           value="5" min="1" max="50">
-                                    <span class="param-hint">1-50 structures per generation</span>
-                                </div>
-                                <div class="param-item">
-                                    <label for="ai-output-format">Output Format</label>
-                                    <select id="ai-output-format" class="form-control">
-                                        <option value="xyz" selected>XYZ (Standard)</option>
-                                        <option value="json">JSON (with metadata)</option>
-                                    </select>
-                                </div>
+                            <h3>Model Backend</h3>
+                            <p class="param-hint" style="margin-bottom: 0.75rem;">
+                                Choose the generative model for fullerene structure prediction. Both
+                                models share the same training data and post-processing pipeline.
+                            </p>
+                            <div class="model-selector" id="model-selector">
+                                <label class="model-option active" data-model="egnn" id="model-opt-egnn">
+                                    <input type="radio" name="ai-model" value="egnn" checked hidden>
+                                    <div class="model-option-content">
+                                        <div class="model-option-header">
+                                            <span class="model-option-icon">🔵</span>
+                                            <span class="model-option-name">EGNN + DDPM</span>
+                                            <span class="model-option-badge default-badge">Default</span>
+                                        </div>
+                                        <div class="model-option-desc">
+                                            Enhanced E(n) Equivariant GNN with Denoising Diffusion.
+                                            200-step DDIM sampling. Proven baseline.
+                                        </div>
+                                        <div class="model-option-status" id="model-status-egnn">
+                                            <span class="status-dot"></span>
+                                            <span class="status-text">Checking...</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <label class="model-option" data-model="painn_fm" id="model-opt-painn_fm">
+                                    <input type="radio" name="ai-model" value="painn_fm" hidden>
+                                    <div class="model-option-content">
+                                        <div class="model-option-header">
+                                            <span class="model-option-icon">🟣</span>
+                                            <span class="model-option-name">PaiNN + Flow Matching</span>
+                                            <span class="model-option-badge new-badge">NEW</span>
+                                        </div>
+                                        <div class="model-option-desc">
+                                            Polarizable Atom Interaction NN with angular awareness.
+                                            50-step ODE sampling. Faster &amp; better bond angles.
+                                        </div>
+                                        <div class="model-option-status" id="model-status-painn_fm">
+                                            <span class="status-dot"></span>
+                                            <span class="status-text">Checking...</span>
+                                        </div>
+                                    </div>
+                                </label>
                             </div>
                         </div>
 
-                        <!-- Advanced Settings (Collapsible) -->
+                        <!-- AI Mode Selector -->
                         <div class="form-section">
-                            <div class="collapsible-header" onclick="toggleAdvanced('ai-advanced')">
-                                <h3>Advanced Settings</h3>
-                                <span class="collapse-icon">▼</span>
+                            <h3>Generation Mode</h3>
+                            <div class="mode-selector ai-mode-selector">
+                                <button class="mode-btn active" data-ai-mode="fullerene">
+                                    <span class="mode-icon">⚛️</span>
+                                    Fullerene Only
+                                </button>
+                                <button class="mode-btn" data-ai-mode="interface">
+                                    <span class="mode-icon">🔗</span>
+                                    Interface Generation
+                                    <span class="ai-badge" style="font-size: 0.6rem; margin-left: 4px;">NEW</span>
+                                </button>
                             </div>
-                            <div id="ai-advanced" class="collapsible-content" style="display: none;">
+                        </div>
+
+                        <!-- ========== FULLERENE-ONLY MODE ========== -->
+                        <div id="ai-fullerene-mode">
+                            <!-- Generation Parameters -->
+                            <div class="form-section">
+                                <h3>Generation Parameters</h3>
                                 <div class="param-grid">
                                     <div class="param-item">
-                                        <label for="ai-temperature">
-                                            Sampling Temperature
-                                            <span class="info-icon" title="Higher = more diverse, Lower = more stable">ⓘ</span>
-                                        </label>
-                                        <input type="range" id="ai-temperature" 
-                                               min="0.5" max="1.5" step="0.1" value="1.0">
-                                        <output id="temp-value">1.0</output>
+                                        <label for="ai-num-atoms">Carbon Atoms</label>
+                                        <select id="ai-num-atoms" class="form-control">
+                                            <option value="60" selected>C60 (Buckminsterfullerene)</option>
+                                            <option value="70">C70 (Rugby ball)</option>
+                                            <option value="80">C80</option>
+                                            <option value="84">C84</option>
+                                            <option value="100">C100</option>
+                                            <option value="custom">Custom...</option>
+                                        </select>
+                                    </div>
+                                    <div class="param-item" id="custom-atoms-container" style="display: none;">
+                                        <label for="ai-custom-atoms">Custom Atom Count</label>
+                                        <input type="number" id="ai-custom-atoms" class="form-control" 
+                                               value="60" min="20" max="240" step="2">
+                                        <span class="param-hint">Must be even, 20-240 atoms</span>
                                     </div>
                                     <div class="param-item">
-                                        <label>
-                                            <input type="checkbox" id="ai-validate" checked>
-                                            Validate connectivity
-                                        </label>
-                                        <span class="param-hint">Reject invalid structures</span>
+                                        <label for="ai-num-samples">Number of Structures</label>
+                                        <input type="number" id="ai-num-samples" class="form-control" 
+                                               value="5" min="1" max="50">
+                                        <span class="param-hint">1-50 structures per generation</span>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-output-format">Output Format</label>
+                                        <select id="ai-output-format" class="form-control">
+                                            <option value="xyz" selected>XYZ (Standard)</option>
+                                            <option value="json">JSON (with metadata)</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Generation Controls -->
-                        <div class="action-bar">
-                            <button id="generate-ai-btn" class="btn btn-primary btn-lg">
-                                <span class="btn-icon">✨</span>
-                                Generate Structures
-                            </button>
-                            <button id="batch-generate-btn" class="btn btn-secondary btn-lg">
-                                <span class="btn-icon">📦</span>
-                                Batch Generate
-                            </button>
-                        </div>
-
-                        <!-- Progress Indicator -->
-                        <div id="ai-progress" class="progress-container" style="display: none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="ai-progress-fill"></div>
-                            </div>
-                            <p class="progress-text" id="ai-progress-text">Generating structures...</p>
-                        </div>
-
-                        <!-- Results Display -->
-                        <div id="ai-results" class="result-panel hidden">
-                            <!-- Results will be populated here -->
-                        </div>
-
-                        <!-- Structure Viewer -->
-                        <div id="ai-viewer" class="structure-viewer hidden">
-                            <div class="viewer-header">
-                                <h3>Structure Preview</h3>
-                                <div class="viewer-controls">
-                                    <button class="viewer-btn" onclick="rotateStructure()" title="Auto-rotate">
-                                        🔄
-                                    </button>
-                                    <button class="viewer-btn" onclick="resetView()" title="Reset view">
-                                        🏠
-                                    </button>
-                                    <button class="viewer-btn" onclick="downloadCurrent()" title="Download">
-                                        💾
-                                    </button>
+                            <!-- Advanced Settings (Collapsible) -->
+                            <div class="form-section">
+                                <div class="collapsible-header" onclick="toggleAdvanced('ai-advanced')">
+                                    <h3>Advanced Settings</h3>
+                                    <span class="collapse-icon">▼</span>
+                                </div>
+                                <div id="ai-advanced" class="collapsible-content" style="display: none;">
+                                    <div class="param-grid">
+                                        <div class="param-item">
+                                            <label for="ai-temperature">
+                                                Sampling Temperature
+                                                <span class="info-icon" title="Higher = more diverse, Lower = more stable">ⓘ</span>
+                                            </label>
+                                            <input type="range" id="ai-temperature" 
+                                                   min="0.5" max="1.5" step="0.1" value="1.0">
+                                            <output id="temp-value">1.0</output>
+                                        </div>
+                                        <div class="param-item">
+                                            <label>
+                                                <input type="checkbox" id="ai-validate" checked>
+                                                Validate connectivity
+                                            </label>
+                                            <span class="param-hint">Reject invalid structures</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="viewer-canvas" id="viewer-canvas">
-                                <!-- 3D visualization will be rendered here -->
-                                <canvas id="structure-canvas" width="800" height="600"></canvas>
+
+                            <!-- Generation Controls -->
+                            <div class="action-bar">
+                                <button id="generate-ai-btn" class="btn btn-primary btn-lg">
+                                    <span class="btn-icon">✨</span>
+                                    Generate Structures
+                                </button>
+                                <button id="batch-generate-btn" class="btn btn-secondary btn-lg">
+                                    <span class="btn-icon">📦</span>
+                                    Batch Generate
+                                </button>
                             </div>
-                            <div class="viewer-info" id="viewer-info">
-                                <!-- Structure info will be displayed here -->
+
+                            <!-- Progress Indicator -->
+                            <div id="ai-progress" class="progress-container" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="ai-progress-fill"></div>
+                                </div>
+                                <p class="progress-text" id="ai-progress-text">Generating structures...</p>
+                            </div>
+
+                            <!-- Results Display -->
+                            <div id="ai-results" class="result-panel hidden">
+                                <!-- Results will be populated here -->
+                            </div>
+
+                            <!-- Structure Viewer -->
+                            <div id="ai-viewer" class="structure-viewer hidden">
+                                <div class="viewer-header">
+                                    <h3>Structure Preview</h3>
+                                    <div class="viewer-controls">
+                                        <button class="viewer-btn" id="btn-ball-stick" onclick="setRenderMode('ball-stick')" title="Ball & Stick">
+                                            ⚛️
+                                        </button>
+                                        <button class="viewer-btn" id="btn-wireframe" onclick="setRenderMode('wireframe')" title="Wireframe">
+                                            🔗
+                                        </button>
+                                        <button class="viewer-btn" onclick="rotateStructure()" title="Auto-rotate">
+                                            🔄
+                                        </button>
+                                        <button class="viewer-btn" onclick="resetView()" title="Reset view">
+                                            🏠
+                                        </button>
+                                        <button class="viewer-btn" onclick="downloadCurrent()" title="Download">
+                                            💾
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="viewer-canvas" id="viewer-canvas">
+                                    <canvas id="structure-canvas" width="800" height="600"></canvas>
+                                </div>
+                                <div class="viewer-info" id="viewer-info"></div>
                             </div>
                         </div>
+                        <!-- END FULLERENE-ONLY MODE -->
 
-                        <!-- Model Information -->
+                        <!-- ========== INTERFACE GENERATION MODE ========== -->
+                        <div id="ai-interface-mode" style="display: none;">
+                            <!-- Pipeline Overview -->
+                            <div class="pipeline-overview">
+                                <div class="pipeline-step" id="pipe-step-1">
+                                    <div class="pipeline-step-num">1</div>
+                                    <div class="pipeline-step-label">Upload Base<br>Structure</div>
+                                </div>
+                                <div class="pipeline-arrow">→</div>
+                                <div class="pipeline-step" id="pipe-step-2">
+                                    <div class="pipeline-step-num">2</div>
+                                    <div class="pipeline-step-label"><span id="pipe-model-label">Model</span> generates<br>Fullerene</div>
+                                </div>
+                                <div class="pipeline-arrow">→</div>
+                                <div class="pipeline-step" id="pipe-step-3">
+                                    <div class="pipeline-step-num">3</div>
+                                    <div class="pipeline-step-label">Build Slab +<br>Place Adsorbate</div>
+                                </div>
+                                <div class="pipeline-arrow">→</div>
+                                <div class="pipeline-step" id="pipe-step-4">
+                                    <div class="pipeline-step-num">4</div>
+                                    <div class="pipeline-step-label">Local GNN<br>Refinement</div>
+                                </div>
+                            </div>
+
+                            <!-- Step 1: Upload base structure (perovskite) -->
+                            <div class="form-section">
+                                <h3>Base Structure (Perovskite)</h3>
+                                <p class="param-hint" style="margin-bottom: 1rem;">
+                                    Upload a bulk perovskite CIF/VASP file. The pipeline will generate a slab,
+                                    produce a fullerene via EGNN, place it on the surface, and optionally refine
+                                    the interface geometry with a local GNN.
+                                </p>
+                                <div class="file-upload-area" id="ai-interface-base-upload">
+                                    <input type="file" id="ai-interface-base-file" accept=".cif,.vasp,.poscar" hidden>
+                                    <label for="ai-interface-base-file" class="file-upload-label">
+                                        <span class="upload-icon">📁</span>
+                                        <span class="upload-text">Upload Perovskite Structure</span>
+                                        <span class="upload-hint">.cif, .vasp, .poscar</span>
+                                    </label>
+                                </div>
+                                <div id="ai-interface-base-info" class="file-info hidden"></div>
+                            </div>
+
+                            <!-- Step 2: Fullerene + Slab Parameters -->
+                            <div class="form-section">
+                                <h3>Fullerene & Slab Parameters</h3>
+                                <div class="param-grid">
+                                    <div class="param-item">
+                                        <label for="ai-iface-num-atoms">Fullerene Size</label>
+                                        <select id="ai-iface-num-atoms" class="form-control">
+                                            <option value="60" selected>C60 (Buckminsterfullerene)</option>
+                                            <option value="70">C70</option>
+                                            <option value="80">C80</option>
+                                            <option value="84">C84</option>
+                                            <option value="100">C100</option>
+                                        </select>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-num-samples">Number of Samples</label>
+                                        <select id="ai-iface-num-samples" class="form-control">
+                                            <option value="1" selected>1</option>
+                                            <option value="3">3</option>
+                                            <option value="5">5</option>
+                                            <option value="10">10</option>
+                                        </select>
+                                        <span class="param-hint">Generate multiple candidate structures</span>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-miller">Miller Index</label>
+                                        <input type="text" id="ai-iface-miller" class="form-control" value="0 0 1" placeholder="h k l">
+                                        <span class="param-hint">Surface orientation of the slab</span>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-slab-thickness">Slab Thickness (Å)</label>
+                                        <input type="number" id="ai-iface-slab-thickness" class="form-control" value="18.0" step="1" min="5">
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-vacuum">Vacuum (Å)</label>
+                                        <input type="number" id="ai-iface-vacuum" class="form-control" value="20.0" step="1" min="5">
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-separation">Separation (Å)</label>
+                                        <input type="number" id="ai-iface-separation" class="form-control" value="3.2" step="0.1" min="1.0">
+                                        <span class="param-hint">Gap between slab surface and fullerene</span>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-buffer">Buffer (Å)</label>
+                                        <input type="number" id="ai-iface-buffer" class="form-control" value="10.0" step="1" min="0">
+                                        <span class="param-hint">Extra space to avoid periodic overlap</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 3: Placement & Supercell -->
+                            <div class="form-section">
+                                <div class="collapsible-header" onclick="toggleAdvanced('ai-iface-advanced')">
+                                    <h3>Advanced Placement Settings</h3>
+                                    <span class="collapse-icon">▼</span>
+                                </div>
+                                <div id="ai-iface-advanced" class="collapsible-content" style="display: none;">
+                                    <div class="param-grid">
+                                        <div class="param-item">
+                                            <label for="ai-iface-xy-frac-x">XY Fractional Position</label>
+                                            <div style="display:flex;gap:0.5rem;">
+                                                <input type="number" id="ai-iface-xy-frac-x" class="form-control" value="0.5" step="0.05" min="0" max="1" style="width:50%">
+                                                <input type="number" id="ai-iface-xy-frac-y" class="form-control" value="0.5" step="0.05" min="0" max="1" style="width:50%">
+                                            </div>
+                                            <span class="param-hint">Fractional x, y for adsorbate placement</span>
+                                        </div>
+                                        <div class="param-item">
+                                            <label for="ai-iface-supercell">Supercell (nx, ny)</label>
+                                            <select id="ai-iface-supercell" class="form-control">
+                                                <option value="auto" selected>Auto (optimal)</option>
+                                                <option value="1,1">1×1</option>
+                                                <option value="2,2">2×2</option>
+                                                <option value="3,3">3×3</option>
+                                                <option value="4,4">4×4</option>
+                                            </select>
+                                        </div>
+                                        <div class="param-item">
+                                            <label for="ai-iface-termination">Surface Termination</label>
+                                            <select id="ai-iface-termination" class="form-control">
+                                                <option value="auto" selected>Auto (best)</option>
+                                                <option value="PbI">PbI-terminated</option>
+                                                <option value="FAI">FAI-terminated</option>
+                                                <option value="MAI">MAI-terminated</option>
+                                            </select>
+                                        </div>
+                                        <div class="param-item">
+                                            <label for="ai-iface-layer-tol">Layer Tolerance (Å)</label>
+                                            <input type="number" id="ai-iface-layer-tol" class="form-control" value="1.5" step="0.1" min="0.5">
+                                        </div>
+                                        <div class="param-item">
+                                            <label>
+                                                <input type="checkbox" id="ai-iface-ddim">
+                                                Use DDIM sampling
+                                            </label>
+                                            <span class="param-hint">Faster but may reduce quality</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 4: Local GNN Refinement -->
+                            <div class="form-section">
+                                <h3>
+                                    Local GNN Refinement
+                                    <span class="ai-badge gnn-badge" id="gnn-status-badge">GNN</span>
+                                </h3>
+                                <p class="param-hint" style="margin-bottom: 1rem;">
+                                    Optional: refine the adsorbate–surface contact geometry using a local
+                                    message-passing GNN. If no trained checkpoint is loaded, the GNN defaults
+                                    to near-zero displacements (safe pass-through).
+                                </p>
+                                <div class="param-grid">
+                                    <div class="param-item">
+                                        <label>
+                                            <input type="checkbox" id="ai-iface-local-refine" checked>
+                                            Enable local GNN refinement
+                                        </label>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-refine-scope">Refinement Scope</label>
+                                        <select id="ai-iface-refine-scope" class="form-control">
+                                            <option value="adsorbate" selected>Adsorbate only</option>
+                                            <option value="interface">Interface region</option>
+                                            <option value="all">All atoms</option>
+                                        </select>
+                                        <span class="param-hint">Which atoms the GNN adjusts</span>
+                                    </div>
+                                </div>
+                                <div id="gnn-info-panel" class="gnn-info-panel">
+                                    <span id="gnn-info-text">Checking GNN availability...</span>
+                                </div>
+                            </div>
+
+                            <!-- Generate Interface Button -->
+                            <div class="action-bar">
+                                <button id="generate-interface-ai-btn" class="btn btn-primary btn-lg" disabled>
+                                    <span class="btn-icon">🚀</span>
+                                    Generate Interface Structure
+                                </button>
+                            </div>
+
+                            <!-- Progress -->
+                            <div id="ai-iface-progress" class="progress-container" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="ai-iface-progress-fill"></div>
+                                </div>
+                                <p class="progress-text" id="ai-iface-progress-text">Generating interface...</p>
+                            </div>
+
+                            <!-- Interface Results -->
+                            <div id="ai-iface-results" class="result-panel hidden"></div>
+                        </div>
+                        <!-- END INTERFACE GENERATION MODE -->
+
+                        <!-- Model Information (shared) -->
                         <div class="info-panel">
-                            <h4>About the AI Model</h4>
-                            <div class="info-grid">
+                            <h4>About the AI Models</h4>
+                            <div class="info-grid" id="ai-info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">Active Model:</span>
+                                    <span class="info-value" id="info-active-model">EGNN + DDPM</span>
+                                </div>
                                 <div class="info-item">
                                     <span class="info-label">Architecture:</span>
-                                    <span class="info-value">Enhanced EGNN + DDPM</span>
+                                    <span class="info-value" id="info-architecture">EGNN</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Sampling:</span>
+                                    <span class="info-value" id="info-sampling">DDPM / DDIM</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Local Refiner:</span>
+                                    <span class="info-value">Message-Passing GNN</span>
                                 </div>
                                 <div class="info-item">
                                     <span class="info-label">Training Data:</span>
-                                    <span class="info-value">Fullerene Database (C60-C100)</span>
+                                    <span class="info-value">Fullerene Database (C20-C720)</span>
                                 </div>
                                 <div class="info-item">
                                     <span class="info-label">Features:</span>
-                                    <span class="info-value">SE(3) Equivariant, Attention, Residuals</span>
+                                    <span class="info-value">SE(3) Equivariant, EMA, Residuals</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Models Available:</span>
+                                    <span class="info-value" id="info-models-count">—</span>
                                 </div>
                                 <div class="info-item">
                                     <span class="info-label">Generation Speed:</span>
-                                    <span class="info-value">~1 structure/second</span>
+                                    <span class="info-value" id="info-gen-speed">~2-5 seconds/structure</span>
                                 </div>
                             </div>
                         </div>
@@ -383,10 +670,10 @@
                                 Server reported: <code id="ai-unavailable-reason">AI module not available</code>
                             </p>
                             <p class="help-text">
-                                Module path: <code id="ai-unavailable-basepath">fullerene_diffusion_poc</code>
+                                Module path: <code id="ai-unavailable-basepath">fullerene_e3gen</code>
                             </p>
                             <p class="help-text">
-                                Expected checkpoint: <code id="ai-unavailable-checkpoint">fullerene_diffusion_poc/checkpoints/best_model.pt</code>
+                                Expected checkpoint: <code id="ai-unavailable-checkpoint">fullerene_e3gen/checkpoints/best_model.pt</code>
                             </p>
                         </div>
                     </div>

@@ -7,12 +7,15 @@ monitoring performance of structure operations.
 
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import contextmanager
 from functools import wraps
 from typing import Any, Callable, Dict, Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -47,7 +50,7 @@ def timer(operation_name: str = "Operation", verbose: bool = True):
         elapsed = time.perf_counter() - start
         result['elapsed'] = elapsed
         if verbose:
-            print(f"{operation_name}: {elapsed:.2f} seconds")
+            logger.info("%s: %.2f seconds", operation_name, elapsed)
 
 
 def benchmark(func: Callable) -> Callable:
@@ -78,7 +81,7 @@ def benchmark(func: Callable) -> Callable:
         start = time.perf_counter()
         result = func(*args, **kwargs)
         elapsed = time.perf_counter() - start
-        print(f"{func.__name__}: {elapsed:.2f} seconds")
+        logger.info("%s: %.2f seconds", func.__name__, elapsed)
         return result
     return wrapper
 

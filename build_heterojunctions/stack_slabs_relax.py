@@ -6,6 +6,9 @@ Stack two VASP-format slab files with a specified gap between them
 import numpy as np
 import sys
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def read_vasp(filename):
@@ -223,7 +226,7 @@ def generate_output_filename(file1, file2, output_dir='relax_slab'):
             if not os.path.exists(output_file):
                 break
             counter += 1
-        print(f"Warning: File {base_filename} already exists, using {os.path.basename(output_file)} instead")
+        logger.warning("File %s already exists, using %s instead", base_filename, os.path.basename(output_file))
     
     return output_file
 
@@ -244,10 +247,10 @@ def stack_slabs(file1, file2, gap=3.0, vacuum=20.0, output_file=None):
         output_file: Path to the generated output file
     """
     # Read both files
-    print(f"Reading {file1}...")
+    logger.info("Reading %s...", file1)
     slab1 = read_vasp(file1)
     
-    print(f"Reading {file2}...")
+    logger.info("Reading %s...", file2)
     slab2 = read_vasp(file2)
     
     # Check if lattice vectors are compatible (xy plane should be the same)
@@ -255,7 +258,7 @@ def stack_slabs(file1, file2, gap=3.0, vacuum=20.0, output_file=None):
     lattice2_xy = slab2['lattice'][:2, :2]
     
     if not np.allclose(lattice1_xy, lattice2_xy, atol=1e-6):
-        print("Warning: xy-plane lattice vectors of two slabs are not identical, will use first slab's lattice vectors")
+        logger.warning("xy-plane lattice vectors of two slabs are not identical, will use first slab's lattice vectors")
     
     # Get z-direction lattice vector lengths
     c1 = np.linalg.norm(slab1['lattice'][2])
@@ -272,8 +275,8 @@ def stack_slabs(file1, file2, gap=3.0, vacuum=20.0, output_file=None):
     slab1_thickness = z1_max - z1_min
     slab2_thickness = z2_max - z2_min
     
-    print(f"\nSlab 1 z-range: {z1_min:.3f} - {z1_max:.3f} Å (thickness: {slab1_thickness:.3f} Å)")
-    print(f"Slab 2 z-range: {z2_min:.3f} - {z2_max:.3f} Å (thickness: {slab2_thickness:.3f} Å)")
+    logger.info("Slab 1 z-range: %.3f - %.3f Å (thickness: %.3f Å)", z1_min, z1_max, slab1_thickness)
+    logger.info("Slab 2 z-range: %.3f - %.3f Å (thickness: %.3f Å)", z2_min, z2_max, slab2_thickness)
     
     # Split total vacuum equally between bottom and top
     bottom_vacuum = vacuum / 2.0
@@ -282,8 +285,8 @@ def stack_slabs(file1, file2, gap=3.0, vacuum=20.0, output_file=None):
     # Calculate new z-direction lattice vector length
     new_c = bottom_vacuum + slab1_thickness + gap + slab2_thickness + top_vacuum
     
-    print(f"Total vacuum thickness: {vacuum:.3f} Å (split equally: {bottom_vacuum:.3f} Å bottom + {top_vacuum:.3f} Å top)")
-    print(f"Total z-direction length: {new_c:.3f} Å")
+    logger.info("Total vacuum thickness: %.3f Å (split equally: %.3f Å bottom + %.3f Å top)", vacuum, bottom_vacuum, top_vacuum)
+    logger.info("Total z-direction length: %.3f Å", new_c)
     
     # Transform coordinates
     # Slab1: from [z1_min, z1_max] to [bottom_vacuum, bottom_vacuum + slab1_thickness]
@@ -356,18 +359,18 @@ def stack_slabs(file1, file2, gap=3.0, vacuum=20.0, output_file=None):
     }
     
     # Write output file
-    print(f"\nWriting {output_file}...")
+    logger.info("Writing %s...", output_file)
     write_vasp(output_file, output_data)
     
-    print(f"\nDone!")
-    print(f"Total atoms: {sum(merged_n_atoms)}")
-    print(f"New lattice z-direction length: {new_c:.3f} Å")
-    print(f"  - Bottom vacuum: {bottom_vacuum:.3f} Å")
-    print(f"  - Slab 1: {slab1_thickness:.3f} Å")
-    print(f"  - Gap: {gap:.3f} Å")
-    print(f"  - Slab 2: {slab2_thickness:.3f} Å")
-    print(f"  - Top vacuum: {top_vacuum:.3f} Å")
-    print(f"  - Total vacuum: {vacuum:.3f} Å (bottom + top)")
+    logger.info("Done!")
+    logger.info("Total atoms: %d", sum(merged_n_atoms))
+    logger.info("New lattice z-direction length: %.3f Å", new_c)
+    logger.info("  - Bottom vacuum: %.3f Å", bottom_vacuum)
+    logger.info("  - Slab 1: %.3f Å", slab1_thickness)
+    logger.info("  - Gap: %.3f Å", gap)
+    logger.info("  - Slab 2: %.3f Å", slab2_thickness)
+    logger.info("  - Top vacuum: %.3f Å", top_vacuum)
+    logger.info("  - Total vacuum: %.3f Å (bottom + top)", vacuum)
     
     return output_file
 
@@ -387,28 +390,33 @@ def main():
     
     # Validate input files
     if not os.path.exists(file1):
-        print(f"Error: File {file1} does not exist")
+        logger.error("File %s does not exist", file1)
         sys.exit(1)
     
     if not os.path.exists(file2):
-        print(f"Error: File {file2} does not exist")
+        logger.error("File %s does not exist", file2)
         sys.exit(1)
     
     # Validate parameters
     if gap < 0:
-        print("Error: Gap must be non-negative")
+        logger.error("Gap must be non-negative")
         sys.exit(1)
     
     if vacuum < 0:
-        print("Error: Vacuum thickness must be non-negative")
+        logger.error("Vacuum thickness must be non-negative")
         sys.exit(1)
     
     try:
         stack_slabs(file1, file2, gap, vacuum, output_file)
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Error: %s", e)
         sys.exit(1)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     main()
