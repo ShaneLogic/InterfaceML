@@ -1,0 +1,184 @@
+# ============================================================================
+# Fullerene Diffusion Model — Configuration v8 (Physics Fine-Tuning)
+# ============================================================================
+# Changelog v8 (2026-02):
+#   - Re-enable physics losses as gentle regularizers (10-50x smaller than v4).
+#   - All physics losses use time-conditioned weighting (topology_loss_v2.py):
+#     full constraint at low noise, zero at high noise.
+#   - EMA weights now used by default for generation (5-15% quality boost).
+#   - lambda_topology kept at 0 (ring detection skips C>70).
+#
+# Changelog v7 (2026-02):
+#   - ROOT CAUSE FOUND: output_head(h) produced SE(3)-INVARIANT noise predictions.
+#   - v7 FIX: coordinate displacement output (SE(3)-EQUIVARIANT).
+#   - Pure denoising baseline established (noise_loss < 0.5).
+# ============================================================================
+
+# Data paths (relative to project root)
+data:
+  xyz_dir: "../dataset/fullerenes/fullerene_xyz"
+  analysis_dir: "../dataset/fullerenes/fullerene_xyz/analysis_20260122"
+  split_csv: "../dataset/fullerenes/fullerene_xyz/analysis_20260122/ml_assets/split.csv"
+
+  # Carbon count range — expanded to include large fullerenes (Plan B+D)
+  C_min: 20
+  C_max: 720
+
+  # Coordinate normalization
+  center: true          # Center at origin
+  normalize_scale: true # Normalize to unit mean radius
+
+  # Synthetic topology augmentation — fill gaps in C distribution
+  synthetic_topology:
+    enabled: true
+    apply_to: train
+    # Extended C values: fill gaps in 50-70 range AND add large fullerenes
+    C_values: [54, 56, 58, 62, 64, 66, 68, 110, 120, 140, 160, 200]
+    per_C: 5               # 5 synthetic graphs per C value
+    max_tries: 500
+    seed: 20260201
+    refine: true
+
+# Model architecture (UPGRADED for capacity & stability)
+model:
+  hidden_dim: 128      # 64→128: more expressive node features
+  num_layers: 6        # 3→6: deeper message passing for global structure
+  edge_dim: 0          # Edge feature dimension (0=no edge features)
+  max_C: 720           # Max carbon count (used by legacy discrete embedding)
+
+  # Condition embedding
+  C_embed_dim: 64      # 32→64: richer condition encoding
+
+  # Plan B: continuous C embedding (generalises to unseen C values)
+  continuous_C_embed: true     # Use Fourier+MLP instead of lookup table
+  C_fourier_features: 16       # Fourier frequencies for C encoding
+
+  # Plan D: hierarchical message passing for large graphs
+  use_hierarchical: true       # Enable graph coarsening for N > threshold
+  hierarchical_threshold: 80   # Coarsen only when graph has > 80 nodes
+  hierarchical_layers: 2       # EGNN layers on coarsened graph
+
+  # Global attention for large fullerenes (C200+)
+  use_global_attention: true    # O(N) pool-broadcast-gate on invariant h
+  global_attention_heads: 4     # Multi-head attention (unused currently, reserved)
+
+  # Time embedding (for diffusion step t)
+  time_embed_dim: 128  # 64→128: finer timestep resolution
+  fourier_features: 16 # 8→16: more frequency components
+
+# Diffusion hyperparameters
+diffusion:
+  num_steps: 1000      # Total diffusion steps T
+  beta_schedule: "cosine"
+  beta_start: 0.0001
+  beta_end: 0.02
+
+  # Sampling (inference)
+  sampling_steps: 200  # 100→200: more denoising steps for quality
+  eta: 0.0             # DDIM deterministic
+
+# Training
+training:
+  epochs: 500               # 150→500: longer training with more data
+  batch_size: 16             # 8→16: better gradient estimates
+  learning_rate: 1.0e-3      # 3e-4→1e-3: faster convergence for pure denoising
+  weight_decay: 0.01         # 1e-4→1e-2: stronger regularization
+  eval_interval: 25          # 100→25: more frequent validation
+  save_interval: 50          # 10→50: save every 50 epochs (less clutter!)
+  ema_decay: 0.9999          # EMA for generation quality
+
+  # Optimizer
+  optimizer: "AdamW"
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+# Loss configuration (v8 — Physics Fine-Tuning)
+loss:
+  # Primary denoising loss — still dominant
+  noise_weight: 1.0
+
+  # ---- PHYSICS LOSSES RE-ENABLED WITH TIME CONDITIONING ----
+  # v7 established pure denoising baseline (noise_loss < 0.5).
+  # v8: Re-enable physics as gentle regularizers with time conditioning.
+  # All physics losses use sigmoid time-weighting from topology_loss_v2.py:
+  #   - t < 0.2T (low noise): full constraint (weight ≈ 1.0)
+  #   - t > 0.6T (high noise): no constraint (weight ≈ 0.0)
+  # Weights are 10-50x smaller than v4/v5 to avoid destabilizing denoising.
+
+  lambda_bond: 0.1           # Bond length regularization (v4 was 5.0 — 50x smaller)
+  target_bond: 1.42          # C-C bond length (Å)
+  bond_tolerance: 0.15       # Acceptable deviation (Å)
+
+  lambda_sphere: 0.05        # Sphericity regularization (v4 was 0.5 — 10x smaller)
+  sphere_time_conditioned: true  # Only enforce at low noise
+
+  lambda_repulsion: 0.02     # Non-bonded repulsion (v4 was 0.1 — 5x smaller)
+  repulsion_min_dist: 1.50   # Min non-bonded distance (Å)
+
+  lambda_connectivity: 0.05  # Progressive connectivity (v4 was 0.3 — 6x smaller)
+  lambda_topology: 0.0       # Keep disabled — ring detection skips C>70
+
+  # ---- Gradient management (CRITICAL for NaN prevention) ----
+  grad_clip: 1.0             # 5→1: tighter clipping prevents explosions
+  use_adaptive_clipping: false
+  nan_guard: true            # NEW: skip batches that produce NaN gradients
+
+  # ---- Reconstruction Guidance (inference-time, no retraining) ----
+  # Shifts x_0_pred toward lower geometric energy during reverse diffusion.
+  # Higher values = more physical structures, but may reduce diversity.
+  guidance_scale: 0.5        # 0=disabled, 0.3-1.0 recommended
+
+  # ---- Late-stage sampling corrections (applied at t < T/2) ----
+  sampling_bond_iters: 1           # Bond projection iterations per step
+  sampling_bond_strength: 0.3      # Bond projection strength
+  sampling_project_radius: true    # Re-project to unit sphere
+  sampling_rescale_each_step: true  # Rescale to unit radius each step
+  sampling_nonbonded_min_dist: 0.3 # Repulsion threshold (normalized)
+
+  # ---- Training schedule ----
+  warmup_epochs: 10          # 30→10: no physics to warm, fast ramp
+  warmup_schedule: "linear"  # Linear LR warmup
+
+  # ---- Time sampling (BALANCED) ----
+  # Old: 80% low-t → model never learned high-noise → NaN on reverse diffusion
+  # New: 50/50 split ensures model learns the FULL denoising trajectory
+  low_t_fraction: 0.0        # 0.5→0.0: uniform sampling (no bias)
+  low_t_max: 200             # 100→200: wider low-noise range
+
+  # Structural validation during training
+  struct_eval_interval: 50     # Generate & validate every N epochs
+  struct_eval_samples: 3       # Samples per C value
+  struct_eval_C_values: [60, 80]  # C values to validate
+
+  # Logging
+  log_interval: 10
+
+# Topology GNN (already trained, skip retraining)
+topology_gnn:
+  enabled: true
+  train_before_diffusion: false   # Already converged at val_loss ~121.33
+  checkpoint_path: "checkpoints/topology_gnn.pt"
+  max_C: 720
+  hidden_dim: 128          # 64→128: match main model capacity
+  latent_dim: 64           # 32→64
+  epochs: 100              # 50→100: more training
+  learning_rate: 5.0e-4    # 1e-3→5e-4: more stable
+  weight_decay: 1.0e-4     # 1e-5→1e-4
+  lambda_degree: 0.1
+  lambda_kl: 0.01
+
+# Evaluation
+evaluation:
+  num_samples: 100           # 50→100: more thorough evaluation
+  metrics:
+    - bond_length_mean
+    - bond_length_std
+    - rmsd_to_nearest
+    - sphericity
+    - validity
+    - nan_fraction             # NEW: track NaN rate
+
+# Hardware
+device: "cuda"   # auto-detect if cuda available
+num_workers: 0   # 0 = avoid multiprocessing issues on macOS
+seed: 20260201
