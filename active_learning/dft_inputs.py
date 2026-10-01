@@ -321,36 +321,15 @@ def _build_constraint_block(
 
 def _get_fixed_atoms_from_poscar(poscar_path: Path) -> List[int]:
     """Extract fixed atom indices (0-based) from POSCAR selective dynamics."""
+    from pymatgen.io.vasp import Poscar
+
     try:
-        lines = poscar_path.read_text().splitlines()
-    except Exception:
+        flags = Poscar.from_file(str(poscar_path), check_for_potcar=False).selective_dynamics
+    except (OSError, ValueError, IndexError):
         return []
-
-    # Find selective dynamics line
-    sd_line_idx = None
-    for i, line in enumerate(lines):
-        if line.strip().lower().startswith("selective"):
-            sd_line_idx = i
-            break
-
-    if sd_line_idx is None:
+    if flags is None:
         return []
-
-    # Coordinate lines start after the selective dynamics line
-    coord_start = sd_line_idx + 1
-    fixed = []
-    atom_idx = 0
-    for line in lines[coord_start:]:
-        parts = line.split()
-        if len(parts) < 6:
-            break
-        # Selective dynamics flags are the last 3 columns (T/F)
-        flags = parts[-3:]
-        if all(f.upper() == "F" for f in flags):
-            fixed.append(atom_idx)
-        atom_idx += 1
-
-    return fixed
+    return [index for index, movable in enumerate(flags) if not np.any(movable)]
 
 
 def _write_submit_all(output_base: Path, jobs: List[dict]) -> None:
