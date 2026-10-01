@@ -30,7 +30,7 @@ pip --version
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/InterfaceML.git
+git clone https://github.com/ShaneLogic/InterfaceML.git
 cd InterfaceML
 
 # Install package
@@ -313,9 +313,9 @@ python -c "import pymatgen; print(pymatgen.__version__)"
 ## Getting Help
 
 - Check the [main README](../README.md)
-- Report bugs on [GitHub Issues](https://github.com/yourusername/InterfaceML/issues)
-- Ask questions in [Discussions](https://github.com/yourusername/InterfaceML/discussions)
-- Email: interface@example.com
+- Report bugs on [GitHub Issues](https://github.com/ShaneLogic/InterfaceML/issues)
+- Ask questions in [Discussions](https://github.com/ShaneLogic/InterfaceML/discussions)
+- Email: xchen565@connect.hkust-gz.edu.cn
 
 ---
 

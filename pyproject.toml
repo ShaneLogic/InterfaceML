@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Interface Modeling Lab", email = "interface@example.com"},
+    {name = "Xuan-Yan Chen", email = "xchen565@connect.hkust-gz.edu.cn"},
 ]
 keywords = ["heterojunction", "DFT", "materials-science", "perovskite", "solar-cell"]
 classifiers = [
@@ -68,10 +68,10 @@ interfaceml-fix = "interfaceml.cli.fix_layers:main"
 interfaceml-web = "interfaceml.web.app:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/InterfaceML"
-Documentation = "https://github.com/yourusername/InterfaceML#readme"
-Repository = "https://github.com/yourusername/InterfaceML"
-Issues = "https://github.com/yourusername/InterfaceML/issues"
+Homepage = "https://github.com/ShaneLogic/InterfaceML"
+Documentation = "https://github.com/ShaneLogic/InterfaceML#readme"
+Repository = "https://github.com/ShaneLogic/InterfaceML"
+Issues = "https://github.com/ShaneLogic/InterfaceML/issues"
 
 [tool.setuptools.packages.find]
 include = ["interfaceml*", "active_learning*"]

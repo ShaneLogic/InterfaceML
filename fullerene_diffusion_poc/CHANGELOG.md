@@ -322,34 +322,5 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ---
 
-## Citation
-
-If you use this work, please cite:
-
-```bibtex
-@software{fullerene_diffusion_2026,
-  author = {InterfaceML Project},
-  title = {E(3)-Equivariant Diffusion Model for Fullerene Generation},
-  year = {2026},
-  version = {2.0.0},
-  url = {https://github.com/your-repo/fullerene-diffusion}
-}
-```
-
-For the time-conditioned physics loss approach (v2.0):
-
-```bibtex
-@techreport{fullerene_diffusion_v2_2026,
-  author = {InterfaceML Project},
-  title = {Time-Conditioned Physics-Informed Loss for Stable Diffusion Training},
-  institution = {InterfaceML},
-  year = {2026},
-  type = {Technical Report},
-  note = {Version 2.0.0}
-}
-```
-
----
-
 **Last Updated:** 2026-01-30  
 **Maintainers:** InterfaceML Project Team

@@ -5,7 +5,6 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.12+-red.svg)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.0-green.svg)](https://github.com/your-repo)
 
 ---
 
@@ -25,7 +24,6 @@
 - [Performance Tuning](#performance-tuning)
 - [Troubleshooting](#troubleshooting)
 - [References](#references)
-- [Citation](#citation)
 
 ---
 
@@ -515,8 +513,8 @@ fullerene_e3gen/
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-username/fullerene_e3gen.git
-cd fullerene_e3gen
+git clone https://github.com/ShaneLogic/InterfaceML.git
+cd InterfaceML/fullerene_e3gen
 
 # 2. Create conda environment
 conda create -n fullerene python=3.9
@@ -1226,69 +1224,22 @@ python generate.py --num_samples 1 --num_atoms 20 --output_dir test/
 7. **GeoDiff: A Geometric Diffusion Model for Molecular Conformation Generation**
    - Xu, M., Yu, L., Song, Y., Shi, C., Ermon, S., & Tang, J. (2022)
    - *International Conference on Learning Representations (ICLR)*
-   - Torsion-based molecular conformations
+   - Equivariant diffusion for molecular conformations
    - [arXiv:2203.02923](https://arxiv.org/abs/2203.02923)
-
-8. **Equivariant Neural Networks: Taxonomy, Theory, and Applications**
-   - Coors, B., Condurache, A. P., & Geiger, A. (2021)
-   - Comprehensive survey of equivariant architectures
-   - [arXiv:2106.08484](https://arxiv.org/abs/2106.08484)
 
 ### Fullerene Background
 
-9. **C₆₀: Buckminsterfullerene** (Nobel Prize Discovery)
+8. **C₆₀: Buckminsterfullerene** (Nobel Prize Discovery)
    - Kroto, H. W., Heath, J. R., O'Brien, S. C., Curl, R. F., & Smalley, R. E. (1985)
    - *Nature, 318*(6042), 162-163
    - Discovery of C60 fullerene
    - DOI: 10.1038/318162a0
 
-10. **An Atlas of Fullerenes**
+9. **An Atlas of Fullerenes**
     - Fowler, P. W., & Manolopoulos, D. E. (1995)
     - *Oxford University Press*
     - Comprehensive catalog of fullerene structures
     - ISBN: 978-0486453620
-
----
-
-## 📖 Citation
-
-If you use this code in your research, please cite:
-
-```bibtex
-@software{fullerene_diffusion_2024,
-  title={E(3)-Equivariant Diffusion Model for Fullerene Generation},
-  author={InterfaceML Project Team},
-  year={2024},
-  version={2.0},
-  url={https://github.com/your-repo/InterfaceML/fullerene_e3gen},
-  note={Physics-informed deep learning framework for 3D molecular structure generation}
-}
-```
-
-**And the foundational papers:**
-
-```bibtex
-@inproceedings{ho2020denoising,
-  title={Denoising Diffusion Probabilistic Models},
-  author={Ho, Jonathan and Jain, Ajay and Abbeel, Pieter},
-  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
-  year={2020}
-}
-
-@inproceedings{satorras2021en,
-  title={E(n) Equivariant Graph Neural Networks},
-  author={Satorras, V{\'\i}ctor Garcia and Hoogeboom, Emiel and Welling, Max},
-  booktitle={International Conference on Machine Learning (ICML)},
-  year={2021}
-}
-
-@inproceedings{nichol2021improved,
-  title={Improved Denoising Diffusion Probabilistic Models},
-  author={Nichol, Alexander Quinn and Dhariwal, Prafulla},
-  booktitle={International Conference on Machine Learning (ICML)},
-  year={2021}
-}
-```
 
 ---
 
@@ -1327,15 +1278,15 @@ furnished to do so, subject to the following conditions:
 ## 💬 Contact & Support
 
 **Project:** InterfaceML - Fullerene Diffusion Generator  
-**Version:** 2.0.0 (Production Ready)  
-**Status:** ✅ Active Development  
-**Last Updated:** January 2024
+**Maintainer:** Xuan-Yan Chen
+
+**Status:** Research prototype
 
 ### Get Help
 
-- **GitHub Issues:** [Open an issue](https://github.com/your-repo/InterfaceML/issues) for bugs or feature requests
-- **Discussions:** [GitHub Discussions](https://github.com/your-repo/InterfaceML/discussions) for questions
-- **Email:** [your-email@institution.edu](mailto:your-email@institution.edu)
+- **GitHub Issues:** [Open an issue](https://github.com/ShaneLogic/InterfaceML/issues) for bugs or feature requests
+- **Discussions:** [GitHub Discussions](https://github.com/ShaneLogic/InterfaceML/discussions) for questions
+- **Email:** [xchen565@connect.hkust-gz.edu.cn](mailto:xchen565@connect.hkust-gz.edu.cn)
 - **Documentation:** This README + inline code comments + INTEGRATION_GUIDE.md
 
 ### Contributing
