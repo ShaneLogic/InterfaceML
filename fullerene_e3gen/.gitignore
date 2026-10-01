@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Model Checkpoints
+checkpoints/*.pt
+!checkpoints/.gitkeep
+
+# Generated Files
+generated/
+*.xyz
+*.json
+
+# Logs
+*.log
+*.pid
+*.out
+*.err
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/

@@ -17,6 +17,7 @@ Requirements: pymatgen, numpy
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 from pathlib import Path
 import shutil
@@ -43,6 +44,8 @@ except ModuleNotFoundError:
     Interface = None  # type: ignore
     Poscar = None  # type: ignore
     _HAS_DEPS = False
+
+logger = logging.getLogger(__name__)
 
 
 def _require_build_deps() -> None:
@@ -650,14 +653,14 @@ def split_layers_to_folder(input_path_str: str, out_base_dir: str | None = None,
         _write_cif_simple(cif2, f"{stem}_layer2", cell, layer2_atoms, header_comment=comment2)
         _write_cif_simple(cif_combined, stem, cell, all_atoms, header_comment=f"Original structure from {input_path.name}; lattice+fractional coords unchanged.")
 
-    print("Wrote split layers to:", out_dir)
-    print(" - Original:", out_dir / input_path.name)
-    print(" - Layer 1 :", poscar1)
-    print(" - Layer 2 :", poscar2)
-    print(" - Combined:", combined_path)
+    logger.info("Wrote split layers to: %s", out_dir)
+    logger.info(" - Original: %s", out_dir / input_path.name)
+    logger.info(" - Layer 1 : %s", poscar1)
+    logger.info(" - Layer 2 : %s", poscar2)
+    logger.info(" - Combined: %s", combined_path)
     cif_combined_path = out_dir / f"{stem}_combined.cif"
     if cif_combined_path.exists():
-        print(" - CIF combined:", cif_combined_path)
+        logger.info(" - CIF combined: %s", cif_combined_path)
     return out_dir
 
 def get_primitive(struct):
@@ -667,7 +670,7 @@ def get_primitive(struct):
         # sometimes get_primitive returns same; ensure lattice volume not pathologically changed
         return prim
     except Exception as e:
-        print("Warning: get_primitive_structure failed, returning original. Err:", e)
+        logger.warning("get_primitive_structure failed, returning original. Err: %s", e)
         return struct
 
 def build_slab(struct, miller, min_slab_size, vacuum, center_slab=True):
@@ -860,7 +863,7 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
     # Verify top's in-plane vectors match (should be true after straining)
     top_lat = top.lattice.matrix
     if np.linalg.norm(a_vec - top_lat[0]) > 0.01 or np.linalg.norm(b_vec - top_lat[1]) > 0.01:
-        print("Warning: In-plane lattice vectors don't match exactly. Using bottom slab vectors.")
+        logger.warning("In-plane lattice vectors don't match exactly. Using bottom slab vectors.")
         # Create new lattice for top using bottom's in-plane vectors but preserving top's c
         new_top_lat = top_lat.copy()
         new_top_lat[0] = a_vec
@@ -959,7 +962,7 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
                 corrections_made += 1
         
         if corrections_made > 0:
-            print(f"Layer crossing prevention: Corrected {corrections_made} atom(s) at periodic boundary")
+            logger.info("Layer crossing prevention: Corrected %d atom(s) at periodic boundary", corrections_made)
             # Rebuild separated structures from combined to ensure consistency
             bottom_separated = Structure(combined_lattice,
                                         [combined[i].species_string for i in range(n_bottom)],
@@ -982,12 +985,12 @@ def align_and_stack_ordered(slab_bottom, slab_top, separation=3.2, vacuum=20.0):
         top_proj_min = top_proj.min()
         gap_size = top_proj_min - bottom_proj_max
         if gap_size < 0:
-            print(
-                f"Warning: Overlap detected along interface normal! "
-                f"bottom_max={bottom_proj_max:.2f} Å, top_min={top_proj_min:.2f} Å"
+            logger.warning(
+                "Overlap detected along interface normal! bottom_max=%.2f Å, top_min=%.2f Å",
+                bottom_proj_max, top_proj_min,
             )
         elif gap_size < 0.5:
-            print(f"Warning: Very small gap ({gap_size:.2f} Å) along interface normal.")
+            logger.warning("Very small gap (%.2f Å) along interface normal.", gap_size)
     
     return bottom_separated, top_separated, combined
 
@@ -1005,8 +1008,8 @@ def write_poscars(bottom, top, combined, output_dir: Path, base_name: str):
     Poscar(top_for_io, sort_structure=False).write_file(top_path)
     Poscar(combined_for_io, sort_structure=False).write_file(combined_path)
 
-    print(
-        "Wrote POSCARs:",
+    logger.info(
+        "Wrote POSCARs: %s %s %s",
         bottom_path,
         top_path,
         combined_path,
@@ -1165,13 +1168,13 @@ def build_interface_from_builder(
         return None, None, None
 
     interface: "Interface" = chosen["interface"]
-    print(f"Using termination: {chosen['termination']}")
-    print(f"Interface contains {chosen['atoms']} atoms (target: <= {max_atoms})")
+    logger.info("Using termination: %s", chosen['termination'])
+    logger.info("Interface contains %d atoms (target: <= %d)", chosen['atoms'], max_atoms)
     if chosen["atoms"] > max_atoms:
-        print(f"Warning: Atom count ({chosen['atoms']}) exceeds limit ({max_atoms})")
-    print(
-        f"ZSL parameters: {chosen['params']} | film thickness={chosen['thickness_a']:.2f} Å, "
-        f"substrate thickness={chosen['thickness_b']:.2f} Å"
+        logger.warning("Atom count (%d) exceeds limit (%d)", chosen['atoms'], max_atoms)
+    logger.info(
+        "ZSL parameters: %s | film thickness=%.2f Å, substrate thickness=%.2f Å",
+        chosen['params'], chosen['thickness_a'], chosen['thickness_b'],
     )
 
     combined = interface.copy()
@@ -1214,7 +1217,7 @@ def build_interface_from_builder(
                 corrections_made += 1
         
         if corrections_made > 0:
-            print(f"Layer crossing prevention (builder): Corrected {corrections_made} atom(s)")
+            logger.info("Layer crossing prevention (builder): Corrected %d atom(s)", corrections_made)
             # Rebuild combined structure with corrected positions
             combined = Structure(lattice, [], [])
             for site in bottom:
@@ -1228,14 +1231,14 @@ def build_interface_from_builder(
 
 def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thickness_b, vacuum, sep, tol, max_area, strain_target, use_builder_interface=False, max_atoms=400):
     """Main orchestrator."""
-    print("Loading structures...")
+    logger.info("Loading structures...")
     A = load_structure(a_file)
     B = load_structure(b_file)
-    print("Optimizing / getting primitive cells...")
+    logger.info("Optimizing / getting primitive cells...")
     Aprim = get_primitive(A)
     Bprim = get_primitive(B)
-    print("Primitive cell A lattice:", Aprim.lattice.abc)
-    print("Primitive cell B lattice:", Bprim.lattice.abc)
+    logger.info("Primitive cell A lattice: %s", Aprim.lattice.abc)
+    logger.info("Primitive cell B lattice: %s", Bprim.lattice.abc)
 
     a_label = _safe_structure_label(a_file)
     b_label = _safe_structure_label(b_file)
@@ -1243,7 +1246,7 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
     hetero_output_dir = Path("structures") / "heterojunctions"
 
     # Search for matches using bulk structures and Miller indices
-    print("Searching for low-strain matches (this may take a moment)...")
+    logger.info("Searching for low-strain matches (this may take a moment)...")
     matches = search_matches(
         Aprim,
         Bprim,
@@ -1271,7 +1274,7 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
         zsl_param_list.append(params)
     
     # Build slabs after finding matches (needed for final structure construction)
-    print("Building slabs (unstrained) for final structure...")
+    logger.info("Building slabs (unstrained) for final structure...")
     slabA = build_slab(Aprim, miller_a, slab_thickness_a, vacuum)
     slabB = build_slab(Bprim, miller_b, slab_thickness_b, vacuum)
     
@@ -1346,10 +1349,10 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
 
     if len(valid_matches) > 0:
         ordered_items = valid_matches
-        print(f"Found {len(valid_matches)} matches within atom limit ({max_atoms})")
+        logger.info("Found %d matches within atom limit (%d)", len(valid_matches), max_atoms)
     else:
         ordered_items = matches_with_scores
-        print(f"Warning: No matches within atom limit ({max_atoms}). Selecting closest candidate...")
+        logger.warning("No matches within atom limit (%d). Selecting closest candidate...", max_atoms)
 
     best_item = ordered_items[0]
     best = best_item[1]
@@ -1358,19 +1361,19 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
     # Calculate optimal thickness for selected match
     optimal_thick_a, optimal_thick_b = best.get("_cached_opt_thickness", estimate_optimal_thickness(best, max_atoms))
     
-    print(f"Selected match with estimated {best_atoms} atoms (strain metric: {best_strain_metric:.4f})")
-    print(f"Optimal thickness for this match: A={optimal_thick_a:.2f} Å, B={optimal_thick_b:.2f} Å")
+    logger.info("Selected match with estimated %d atoms (strain metric: %.4f)", best_atoms, best_strain_metric)
+    logger.info("Optimal thickness for this match: A=%.2f Å, B=%.2f Å", optimal_thick_a, optimal_thick_b)
     
     # Use optimal thickness if significantly different
     if abs(optimal_thick_a - slab_thickness_a) > 0.5 or abs(optimal_thick_b - slab_thickness_b) > 0.5:
-        print(f"Adjusting thickness to meet atom limit:")
-        print(f"  A: {slab_thickness_a:.2f} -> {optimal_thick_a:.2f} Å")
-        print(f"  B: {slab_thickness_b:.2f} -> {optimal_thick_b:.2f} Å")
+        logger.info("Adjusting thickness to meet atom limit:")
+        logger.info("  A: %.2f -> %.2f Å", slab_thickness_a, optimal_thick_a)
+        logger.info("  B: %.2f -> %.2f Å", slab_thickness_b, optimal_thick_b)
         slab_thickness_a = optimal_thick_a
         slab_thickness_b = optimal_thick_b
 
     if use_builder_interface:
-        print("Attempting ordered interface construction via CoherentInterfaceBuilder...")
+        logger.info("Attempting ordered interface construction via CoherentInterfaceBuilder...")
         builder_param_candidates = zsl_param_list or [
             {
                 "max_area": float(max_area),
@@ -1395,33 +1398,34 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
         )
 
         if combined is not None:
-            print("Successfully built ordered interface using CoherentInterfaceBuilder.")
+            logger.info("Successfully built ordered interface using CoherentInterfaceBuilder.")
             write_poscars(bottom, top, combined, hetero_output_dir, hetero_base_name)
             return
         else:
-            print("Ordered interface generation failed; falling back to manual stacking workflow.")
+            logger.warning("Ordered interface generation failed; falling back to manual stacking workflow.")
     
-    print("Best match summary:")
-    print(" area:", best["area"])
-    print(" supercell A matrix:\n", best["supercell_a"])
-    print(" supercell B matrix:\n", best["supercell_b"])
+    logger.info("Best match summary:")
+    logger.info(" area: %s", best["area"])
+    logger.info(" supercell A matrix:\n%s", best["supercell_a"])
+    logger.info(" supercell B matrix:\n%s", best["supercell_b"])
     if "det_a" in best and "det_b" in best:
-        print(f" determinants det(A)={best['det_a']:.2f}, det(B)={best['det_b']:.2f}")
+        logger.info(" determinants det(A)=%.2f, det(B)=%.2f", best['det_a'], best['det_b'])
     if "length_components" in best:
-        print(
-            " length mismatch (fractional per in-plane vector):",
+        logger.info(
+            " length mismatch (fractional per in-plane vector): %s",
             np.array2string(np.array(best["length_components"]), precision=5),
         )
     if "angle_mismatch" in best:
         angles = best.get("angles", (None, None))
         if angles[0] is not None and angles[1] is not None:
-            print(
-                f" angles (film/substrate): {angles[0]:.3f}° / {angles[1]:.3f}° | mismatch {best['angle_mismatch']:.3f}°"
+            logger.info(
+                " angles (film/substrate): %.3f° / %.3f° | mismatch %.3f°",
+                angles[0], angles[1], best['angle_mismatch'],
             )
         else:
-            print(f" angle mismatch: {best['angle_mismatch']:.3f}°")
+            logger.info(" angle mismatch: %.3f°", best['angle_mismatch'])
     if "zsl_params" in best:
-        print(" ZSL parameter set:", best["zsl_params"])
+        logger.info(" ZSL parameter set: %s", best["zsl_params"])
     # Use the InterfaceMatch data to build the supercell structures manually.
 
     # Apply supercell transform matrices to slabs (they are 3x3 integer matrices)
@@ -1440,27 +1444,27 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
     # Compute in-plane lattice norms to determine actual strains
     aA_pre = compute_inplane_norms(slabA_super.lattice)[0:2]
     aB_pre = compute_inplane_norms(slabB_super.lattice)[0:2]
-    print("In-plane sizes after supercell (A):", aA_pre)
-    print("In-plane sizes after supercell (B):", aB_pre)
+    logger.info("In-plane sizes after supercell (A): %s", aA_pre)
+    logger.info("In-plane sizes after supercell (B): %s", aB_pre)
 
     # Decide which to strain based on user input: 'A', 'B', or 'both'
     if strain_target.lower() == 'a':
         scale_x = aB_pre[0] / aA_pre[0]
         scale_y = aB_pre[1] / aA_pre[1]
-        print(f"Straining A to match B with factors x={scale_x:.6f}, y={scale_y:.6f}")
+        logger.info("Straining A to match B with factors x=%.6f, y=%.6f", scale_x, scale_y)
         slabA_strained = apply_inplane_strain(slabA_super, scale_x, scale_y)
         slabB_strained = slabB_super.copy()
     elif strain_target.lower() == 'b':
         scale_x = aA_pre[0] / aB_pre[0]
         scale_y = aA_pre[1] / aB_pre[1]
-        print(f"Straining B to match A with factors x={scale_x:.6f}, y={scale_y:.6f}")
+        logger.info("Straining B to match A with factors x=%.6f, y=%.6f", scale_x, scale_y)
         slabB_strained = apply_inplane_strain(slabB_super, scale_x, scale_y)
         slabA_strained = slabA_super.copy()
     elif strain_target.lower() == 'both':
         # apply sqrt of ratio to both (split strain evenly)
         scale_x = math.sqrt(aB_pre[0] / aA_pre[0])
         scale_y = math.sqrt(aB_pre[1] / aA_pre[1])
-        print(f"Splitting strain: scale factors applied to A: {scale_x:.6f},{scale_y:.6f} and to B: {1.0/scale_x:.6f},{1.0/scale_y:.6f}")
+        logger.info("Splitting strain: scale factors applied to A: %.6f,%.6f and to B: %.6f,%.6f", scale_x, scale_y, 1.0/scale_x, 1.0/scale_y)
         slabA_strained = apply_inplane_strain(slabA_super, scale_x, scale_y)
         slabB_strained = apply_inplane_strain(slabB_super, 1.0/scale_x, 1.0/scale_y)
     else:
@@ -1473,7 +1477,7 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
     
     # Verify vectors match (should be true after straining, but double-check)
     if np.linalg.norm(bottom_lat[0] - top_lat[0]) > 0.01 or np.linalg.norm(bottom_lat[1] - top_lat[1]) > 0.01:
-        print("Warning: In-plane vectors don't match. Adjusting top slab lattice.")
+        logger.warning("In-plane vectors don't match. Adjusting top slab lattice.")
         # Preserve top's c vector while matching in-plane vectors
         new_top_lat = top_lat.copy()
         new_top_lat[0] = bottom_lat[0]
@@ -1494,7 +1498,7 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
         if n_atoms_current <= max_atoms:
             break
         
-        print(f"\nIteration {iteration + 1}: Current atom count ({n_atoms_current}) exceeds limit ({max_atoms})")
+        logger.info("Iteration %d: Current atom count (%d) exceeds limit (%d)", iteration + 1, n_atoms_current, max_atoms)
         
         # Calculate aggressive reduction factor
         # Use 0.6-0.7 factor to ensure we get well under limit
@@ -1506,11 +1510,11 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
         
         # Don't reduce if already at minimum
         if new_thickness_a >= current_thickness_a - 0.1 and new_thickness_b >= current_thickness_b - 0.1:
-            print("Warning: Cannot reduce thickness further. Atom count may exceed limit.")
+            logger.warning("Cannot reduce thickness further. Atom count may exceed limit.")
             break
         
-        print(f"Reducing thickness: A: {current_thickness_a:.2f} -> {new_thickness_a:.2f} Å")
-        print(f"                   B: {current_thickness_b:.2f} -> {new_thickness_b:.2f} Å")
+        logger.info("Reducing thickness: A: %.2f -> %.2f Å", current_thickness_a, new_thickness_a)
+        logger.info("                   B: %.2f -> %.2f Å", current_thickness_b, new_thickness_b)
         
         current_thickness_a = new_thickness_a
         current_thickness_b = new_thickness_b
@@ -1546,41 +1550,46 @@ def auto_run(a_file, b_file, miller_a, miller_b, slab_thickness_a, slab_thicknes
         slabB_super = slabB_strained if strain_target.lower() != 'a' else slabB_super
     
     final_atoms_before_stack = len(slabA_strained) + len(slabB_strained)
-    print(f"\nFinal atom count before stacking: {final_atoms_before_stack} (target: <={max_atoms})")
+    logger.info("Final atom count before stacking: %d (target: <=%d)", final_atoms_before_stack, max_atoms)
     
     # align and stack with ordered arrangement (put B as bottom, A as top)
     bottom, top, combined = align_and_stack_ordered(slabB_strained, slabA_strained, separation=sep, vacuum=vacuum)
     
     # Report final atom count
     final_atoms = len(combined)
-    print(f"\nFinal structure contains {final_atoms} atoms (limit: {max_atoms})")
+    logger.info("Final structure contains %d atoms (limit: %d)", final_atoms, max_atoms)
     if final_atoms > max_atoms:
-        print(f"⚠ WARNING: Atom count ({final_atoms}) exceeds limit ({max_atoms})!")
-        print(f"  Consider reducing max_area or using thinner initial slabs.")
+        logger.warning("Atom count (%d) exceeds limit (%d)!", final_atoms, max_atoms)
+        logger.warning("  Consider reducing max_area or using thinner initial slabs.")
     else:
-        print(f"✓ Atom count is within limit ({(max_atoms - final_atoms) / max_atoms * 100:.1f}% under limit)")
+        logger.info("Atom count is within limit (%.1f%% under limit)", (max_atoms - final_atoms) / max_atoms * 100)
     
     # Verify final structure has matching in-plane lattice
     final_bottom_lat = bottom.lattice.matrix
     final_top_lat = top.lattice.matrix
     final_combined_lat = combined.lattice.matrix
     
-    print("\nFinal lattice verification:")
-    print("Bottom in-plane vectors:", final_bottom_lat[0], final_bottom_lat[1])
-    print("Top in-plane vectors:", final_top_lat[0], final_top_lat[1])
-    print("Combined in-plane vectors:", final_combined_lat[0], final_combined_lat[1])
+    logger.info("Final lattice verification:")
+    logger.info("Bottom in-plane vectors: %s %s", final_bottom_lat[0], final_bottom_lat[1])
+    logger.info("Top in-plane vectors: %s %s", final_top_lat[0], final_top_lat[1])
+    logger.info("Combined in-plane vectors: %s %s", final_combined_lat[0], final_combined_lat[1])
     
     write_poscars(bottom, top, combined, hetero_output_dir, hetero_base_name)
 
     # print final in-plane match results
     final_a = np.linalg.norm(bottom.lattice.matrix[0]), np.linalg.norm(bottom.lattice.matrix[1])
     final_b = np.linalg.norm(top.lattice.matrix[0]), np.linalg.norm(top.lattice.matrix[1])
-    print("Final in-plane lattice sizes (bottom):", final_a)
-    print("Final in-plane lattice sizes (top):", final_b)
+    logger.info("Final in-plane lattice sizes (bottom): %s", final_a)
+    logger.info("Final in-plane lattice sizes (top): %s", final_b)
     # estimate percent strains applied to original prims (informational)
     # NOTE: more careful calculation can be added
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     p = argparse.ArgumentParser(description="Auto build matched heterojunction interface from two bulks.")
     # Build-mode inputs (kept for backwards compatibility)
     p.add_argument("--a", dest="afile", required=False, help="File for material A (CIF/POSCAR)")

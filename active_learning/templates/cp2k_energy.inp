@@ -1,0 +1,67 @@
+&GLOBAL
+  PROJECT {project_name}
+  RUN_TYPE ENERGY_FORCE
+  PRINT_LEVEL MEDIUM
+&END GLOBAL
+
+&FORCE_EVAL
+  METHOD Quickstep
+
+  &DFT
+    BASIS_SET_FILE_NAME BASIS_MOLOPT
+    POTENTIAL_FILE_NAME POTENTIAL
+
+    &MGRID
+      CUTOFF {cutoff}
+      REL_CUTOFF {rel_cutoff}
+      NGRIDS 5
+    &END MGRID
+
+    &QS
+      METHOD GPW
+      EPS_DEFAULT 1.0E-12
+    &END QS
+
+    &SCF
+      MAX_SCF {max_scf}
+      EPS_SCF 1.0E-6
+      SCF_GUESS ATOMIC
+      &OT
+        MINIMIZER DIIS
+        PRECONDITIONER FULL_SINGLE_INVERSE
+        ENERGY_GAP 0.1
+      &END OT
+      &OUTER_SCF
+        MAX_SCF 20
+        EPS_SCF 1.0E-6
+      &END OUTER_SCF
+    &END SCF
+
+    &XC
+      &XC_FUNCTIONAL {functional}
+      &END XC_FUNCTIONAL
+{dispersion_block}
+    &END XC
+  &END DFT
+
+  &SUBSYS
+    &CELL
+      A {cell_a}
+      B {cell_b}
+      C {cell_c}
+      PERIODIC XYZ
+    &END CELL
+
+    &TOPOLOGY
+      COORD_FILE_NAME structure.xyz
+      COORD_FILE_FORMAT XYZ
+    &END TOPOLOGY
+
+{kind_blocks}
+  &END SUBSYS
+
+  &PRINT
+    &FORCES ON
+    &END FORCES
+  &END PRINT
+&END FORCE_EVAL

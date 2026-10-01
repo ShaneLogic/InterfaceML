@@ -7,17 +7,26 @@ Shared structure IO utilities for CLI scripts in this folder.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from pymatgen.core import Lattice, Structure
 
 try:
-    # When executed as a module: `python -m build_heterojunctions.<script>`
-    from ._utils_xyz import read_cp2k_xyz_last_frame
+    from interfaceml.core.io import (
+        load_structure as _core_load_structure,
+        get_element_symbols as _core_get_element_symbols,
+    )
+    _CORE_AVAILABLE = True
 except ImportError:
-    # When executed as a script: `python build_heterojunctions/<script>.py`
-    from _utils_xyz import read_cp2k_xyz_last_frame
+    _CORE_AVAILABLE = False
+    _core_load_structure = None  # type: ignore[assignment]
+    _core_get_element_symbols = None  # type: ignore[assignment]
+    try:
+        # When executed as a module: `python -m build_heterojunctions.<script>`
+        from ._utils_xyz import read_cp2k_xyz_last_frame
+    except ImportError:
+        # When executed as a script: `python build_heterojunctions/<script>.py`
+        from _utils_xyz import read_cp2k_xyz_last_frame
 
 
 def load_structure_any(path_str: str) -> Structure:
@@ -27,6 +36,8 @@ def load_structure_any(path_str: str) -> Structure:
     For XYZ, this function expects a CP2K-style comment line containing Tv_1/Tv_2/Tv_3.
     If not found, it falls back to a large orthorhombic box based on coordinate extents.
     """
+    if _CORE_AVAILABLE:
+        return _core_load_structure(path_str)
     path = Path(path_str)
     if path.suffix.lower() == ".xyz":
         symbols, coords, cell = read_cp2k_xyz_last_frame(path)
@@ -46,5 +57,6 @@ def load_structure_any(path_str: str) -> Structure:
 
 def element_symbols(structure: Structure) -> list[str]:
     """Return plain element symbols for each site."""
+    if _CORE_AVAILABLE:
+        return _core_get_element_symbols(structure)
     return [str(sp) for sp in structure.species]
-

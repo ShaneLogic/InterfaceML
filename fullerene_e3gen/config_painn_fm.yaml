@@ -1,0 +1,164 @@
+# ============================================================================
+# PaiNN + Flow Matching — Configuration (MacBook MPS)
+# ============================================================================
+# Architecture: PaiNN (angular awareness via vector features)
+# Diffusion:    Conditional Flow Matching (50-step ODE, no beta schedule)
+# Device:       Apple MPS (Metal Performance Shaders)
+#
+# PaiNN advantages over EGNN:
+#   1. Vector features V[N,F,3] capture bond angles (120° sp² critical)
+#   2. AdaLayerNorm for per-layer time conditioning
+#   3. CFG (Classifier-Free Guidance) via conditional dropout
+#   4. Sinc radial basis + cosine cutoff (no distance suppression)
+#
+# Flow Matching advantages over DDPM:
+#   1. Simpler objective: MSE(v_pred, x₀ - noise)
+#   2. Straighter trajectories → fewer sampling steps (50 vs 200)
+#   3. No variance explosion → better training stability
+#   4. Uniform t sampling (no low-t bias needed)
+# ============================================================================
+
+# Data paths (same dataset as EGNN training)
+data:
+  xyz_dir: "../dataset/fullerenes/fullerene_xyz"
+  analysis_dir: "../dataset/fullerenes/fullerene_xyz/analysis_20260122"
+  split_csv: "../dataset/fullerenes/fullerene_xyz/analysis_20260122/ml_assets/split.csv"
+
+  C_min: 20
+  C_max: 720
+
+  center: true
+  normalize_scale: true
+
+  # Synthetic topology augmentation
+  synthetic_topology:
+    enabled: true
+    apply_to: train
+    C_values: [54, 56, 58, 62, 64, 66, 68, 110, 120, 140, 160, 200]
+    per_C: 5
+    max_tries: 500
+    seed: 20260213
+    refine: true
+
+# PaiNN model
+model:
+  architecture: painn          # <-- PaiNN instead of EGNN
+
+  hidden_dim: 128              # PaiNN is more parameter-efficient than EGNN
+  num_layers: 6                # 6 message-passing layers
+  num_rbf: 20                  # Sinc radial basis functions
+  cutoff: 5.0                  # Distance cutoff in normalised units
+
+  max_C: 720
+  C_embed_dim: 64
+  C_fourier_features: 16      # Continuous Fourier C embedding (same as EGNN v3)
+
+  # Time embedding
+  time_embed_dim: 128
+  fourier_features: 16
+
+  # CFG (Classifier-Free Guidance) dropout
+  cfg_drop_prob: 0.1           # Drop C condition 10% of the time during training
+
+  # Phase 3 scaffolding (single species for now)
+  num_atom_types: 1
+  use_pbc: false
+
+# Diffusion: Flow Matching
+diffusion:
+  type: flow_matching          # <-- Flow Matching instead of DDPM
+  num_steps: 1000              # Only used for backward-compat scheduler
+  beta_schedule: "cosine"
+  beta_start: 0.0001
+  beta_end: 0.02
+
+  # Sampling (inference) — FM needs far fewer steps
+  sampling_steps: 50           # 50 Euler steps (vs 200 DDIM for DDPM)
+  eta: 0.0
+
+# Training — tuned for MacBook MPS
+training:
+  epochs: 300                  # Sufficient for FM convergence
+  batch_size: 8                # Conservative for MPS memory (~8GB unified)
+  learning_rate: 5.0e-4        # Lower than EGNN: PaiNN converges smoother
+  weight_decay: 0.01
+  eval_interval: 25
+  save_interval: 50
+  ema_decay: 0.9999
+  checkpoint_dir: "checkpoints/painn_fm"
+
+  optimizer: "AdamW"
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+# Loss (gentle physics regularization)
+loss:
+  noise_weight: 1.0
+
+  # Physics losses — same gentle weights as EGNN v8
+  lambda_bond: 0.1
+  target_bond: 1.42
+  bond_tolerance: 0.15
+
+  lambda_sphere: 0.05
+  sphere_time_conditioned: true
+
+  lambda_repulsion: 0.02
+  repulsion_min_dist: 1.50
+
+  lambda_connectivity: 0.05
+  lambda_topology: 0.0
+
+  # Gradient management
+  grad_clip: 1.0
+  nan_guard: true
+
+  # Reconstruction Guidance (inference-time)
+  guidance_scale: 0.5
+
+  # Sampling corrections
+  sampling_bond_iters: 1
+  sampling_bond_strength: 0.3
+  sampling_project_radius: true
+  sampling_rescale_each_step: true
+  sampling_nonbonded_min_dist: 0.3
+
+  # Schedule
+  warmup_epochs: 10
+  warmup_schedule: "linear"
+
+  # Flow Matching uses uniform t by design — no low-t bias needed
+  low_t_fraction: 0.0
+  low_t_max: 200
+
+  # Structural validation
+  struct_eval_interval: 50
+  struct_eval_samples: 3
+  struct_eval_C_values: [60, 80]
+
+  log_interval: 10
+
+# Topology GNN (already trained, reuse checkpoint)
+topology_gnn:
+  enabled: true
+  train_before_diffusion: false
+  checkpoint_path: "checkpoints/topology_gnn.pt"
+  max_C: 720
+  hidden_dim: 128
+  latent_dim: 64
+
+# Evaluation
+evaluation:
+  num_samples: 100
+  metrics:
+    - bond_length_mean
+    - bond_length_std
+    - rmsd_to_nearest
+    - sphericity
+    - validity
+    - nan_fraction
+
+# Hardware — MacBook Apple Silicon
+device: "auto"        # auto-detect: MPS > CPU
+num_workers: 0        # avoid multiprocessing issues on macOS
+seed: 20260213

@@ -17,9 +17,12 @@ inside an atom_site loop.
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Sequence, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def _deg2rad(x: float) -> float:
@@ -457,12 +460,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         out_path = dest_dir / f"{in_path.stem}{args.suffix}{in_path.suffix}"
         out_path.write_text(out_text, encoding="utf-8")
 
-        print(f"Wrote: {out_path}")
+        logger.info("Wrote: %s", out_path)
 
     return 0
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     raise SystemExit(main())
 
 

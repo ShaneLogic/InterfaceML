@@ -1,78 +1,166 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InterfaceML - Heterojunction Modeling Platform</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-</head>
-<body>
-    <!-- Header -->
-    <header class="header">
-        <div class="container">
-            <div class="header-content">
-                <h1 class="logo">
-                    <span class="logo-icon">⚛️</span>
-                    InterfaceML
-                </h1>
-                <p class="tagline">Professional Heterojunction Modeling Platform</p>
-            </div>
+{% extends "base.html" %}
+
+{% block title %}InterfaceML - Heterojunction Modeling Platform{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+{% endblock %}
+
+{% block body %}
+<div class="app-layout">
+    <!-- ===== Sidebar ===== -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#06b6d4">
+                <circle cx="14" cy="14" r="6"/>
+                <path d="M14 2v4M14 22v4M2 14h4M22 14h4M5.6 5.6l2.8 2.8M19.6 19.6l2.8 2.8M5.6 22.4l2.8-2.8M19.6 8.4l2.8-2.8"/>
+            </svg>
+            <span class="sidebar-logo-text">InterfaceML</span>
         </div>
+
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+                <div class="sidebar-nav-label">Build</div>
+                <button class="sidebar-nav-item active" data-section="structure-builder">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="14" height="14" rx="2"/>
+                        <path d="M3 10h14M10 3v14"/>
+                    </svg>
+                    <span class="sidebar-nav-item-label">Structure Builder</span>
+                </button>
+            </div>
+
+            <div class="sidebar-nav-group">
+                <div class="sidebar-nav-label">Generate</div>
+                <button class="sidebar-nav-item" data-section="ai-generation">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 2l2.5 5 5.5.8-4 3.9.9 5.3L10 14.5 5.1 17l.9-5.3-4-3.9 5.5-.8z"/>
+                    </svg>
+                    <span class="sidebar-nav-item-label">AI Generation</span>
+                </button>
+            </div>
+
+            <div class="sidebar-nav-group">
+                <div class="sidebar-nav-label">Analyze</div>
+                <button class="sidebar-nav-item" data-section="analysis">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 17V8M7 17V5M11 17V10M15 17V3M19 17V7"/>
+                    </svg>
+                    <span class="sidebar-nav-item-label">Analysis</span>
+                </button>
+            </div>
+
+            <div class="sidebar-nav-group">
+                <div class="sidebar-nav-label">Compute</div>
+                <button class="sidebar-nav-item" data-section="dft-pipeline">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="16" height="12" rx="2"/>
+                        <path d="M6 9h2M10 9h4M6 12h8"/>
+                    </svg>
+                    <span class="sidebar-nav-item-label">DFT Pipeline</span>
+                </button>
+            </div>
+
+            <div class="sidebar-nav-group">
+                <div class="sidebar-nav-label">Learn</div>
+                <button class="sidebar-nav-item" data-section="algorithm">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19V5a2 2 0 012-2h8a2 2 0 012 2v14"/>
+                        <path d="M4 19h12M8 7h4M8 10h4M8 13h2"/>
+                    </svg>
+                    <span class="sidebar-nav-item-label">Algorithm</span>
+                </button>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="/docs" class="sidebar-footer-link sidebar-docs-link">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
+                    <path d="M4 19V5a2 2 0 012-2h8a2 2 0 012 2v14"/>
+                    <path d="M4 19h12M8 7h4M8 10h4M8 13h2"/>
+                </svg>
+                <span>Documentation</span>
+            </a>
+            <button class="sidebar-collapse-btn" id="sidebar-collapse-btn">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 4l-6 6 6 6"/>
+                </svg>
+                <span class="sidebar-collapse-label">Collapse</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- ===== Mobile Header ===== -->
+    <header class="mobile-header">
+        <button class="mobile-hamburger" id="mobile-hamburger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:24px;height:24px">
+                <path d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+        </button>
+        <span class="mobile-logo">InterfaceML</span>
     </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="container">
-            <!-- Feature Tabs -->
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="adsorbate">
-                    <span class="tab-icon">🔬</span>
-                    Adsorbate Modeling
-                </button>
-                <button class="tab-btn" data-tab="interface">
-                    <span class="tab-icon">⚡</span>
-                    Interface Builder
-                </button>
-                <button class="tab-btn" data-tab="layers">
-                    <span class="tab-icon">📐</span>
-                    Layer Fixing
-                </button>
-                <button class="tab-btn" data-tab="density">
-                    <span class="tab-icon">📊</span>
-                    Density Analysis
-                </button>
+    <!-- ===== Main Content ===== -->
+    <main class="main-area">
+
+        <!-- Page header breadcrumb -->
+        <div class="page-header" id="page-header">
+            <div class="page-header-left">
+                <h1 class="page-header-title" id="page-header-title">Structure Builder</h1>
+                <p class="page-header-desc" id="page-header-desc">Build heterojunction interfaces and adsorbate models</p>
             </div>
+            <div class="page-header-right">
+                <span class="server-status" id="server-status">
+                    <span class="server-status-dot"></span>
+                    <span class="server-status-text">Connecting...</span>
+                </span>
+            </div>
+        </div>
 
-            <!-- Tab Content: Adsorbate Modeling -->
-            <div id="adsorbate" class="tab-content active">
-                <div class="panel">
-                    <h2 class="panel-title">Build Adsorbate Models</h2>
-                    <p class="panel-description">
-                        Create perovskite/fullerene interfaces for solar cell modeling.
-                        Upload your base structure and adsorbate molecules.
-                    </p>
+        <!-- ========== Section: Structure Builder ========== -->
+        <section id="structure-builder" class="page-section active">
+            <div class="glass-panel">
+                <h2 class="panel-title">Structure Builder</h2>
+                <p class="panel-description">
+                    Create perovskite/fullerene adsorbate models or coherent heterojunction interfaces
+                    with automatic strain matching and supercell optimization.
+                </p>
 
+                <!-- Sub-mode toggle -->
+                <div class="sub-mode-toggle" id="builder-mode-toggle">
+                    <button class="sub-mode-btn active" data-builder-mode="adsorbate">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>
+                        Adsorbate Model
+                    </button>
+                    <button class="sub-mode-btn" data-builder-mode="interface">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5h12M2 11h12"/><path d="M5 2v12M11 2v12"/></svg>
+                        Interface Builder
+                    </button>
+                </div>
+
+                <!-- Adsorbate Mode -->
+                <div id="builder-adsorbate" class="sub-mode-content active">
                     <div class="form-grid">
                         <div class="form-section">
                             <h3>Base Structure (Perovskite)</h3>
                             <div class="file-upload-area" id="base-upload">
                                 <input type="file" id="base-file" accept=".cif,.vasp,.poscar" hidden>
                                 <label for="base-file" class="file-upload-label">
-                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
                                     <span class="upload-text">Click or drag file here</span>
                                     <span class="upload-hint">Supports .cif, .vasp, .poscar</span>
                                 </label>
                             </div>
                             <div id="base-info" class="file-info hidden"></div>
                         </div>
-
                         <div class="form-section">
                             <h3>Adsorbate Molecule(s)</h3>
                             <div class="file-upload-area" id="adsorbate-upload">
                                 <input type="file" id="adsorbate-file" accept=".cif,.vasp,.poscar" multiple hidden>
                                 <label for="adsorbate-file" class="file-upload-label">
-                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
                                     <span class="upload-text">Click or drag files here</span>
                                     <span class="upload-hint">Multiple files for stacking</span>
                                 </label>
@@ -87,14 +175,26 @@
                             <div class="param-item">
                                 <label for="termination">Surface Termination</label>
                                 <select id="termination" class="form-control">
-                                    <option value="PbI">PbI-terminated</option>
-                                    <option value="FAI">FAI-terminated</option>
-                                    <option value="MAI">MAI-terminated</option>
-                                    <option value="AI">AI-terminated</option>
+                                    <option value="auto">Auto (optimal)</option>
+                                    <option value="Pb,I">Pb,I — PbI₂-terminated</option>
+                                    <option value="Sn,I">Sn,I — SnI₂-terminated</option>
+                                    <option value="Ge,I">Ge,I — GeI₂-terminated</option>
+                                    <option value="Pb,Br">Pb,Br — PbBr₂-terminated</option>
+                                    <option value="Pb,Cl">Pb,Cl — PbCl₂-terminated</option>
+                                    <option value="Cs,I">Cs,I — CsI-terminated</option>
+                                    <option value="Cs,Br">Cs,Br — CsBr-terminated</option>
+                                    <option value="Rb,I">Rb,I — RbI-terminated</option>
+                                    <option value="C,N,I">C,N,I — organic A-cation</option>
+                                    <option value="__custom__">Custom…</option>
                                 </select>
+                                <input type="text" id="termination-custom" class="form-control hidden"
+                                       placeholder="e.g. Cs,I  or  Pb,Br" style="margin-top:0.4rem;">
+                                <small style="color:var(--text-secondary);font-size:0.72rem;">
+                                    Comma-separated elements that should dominate the top layer.
+                                </small>
                             </div>
                             <div class="param-item">
-                                <label for="distance">Distance (Å)</label>
+                                <label for="distance">Distance (Angstrom)</label>
                                 <input type="number" id="distance" class="form-control" value="2.5" step="0.1" min="1.0">
                             </div>
                             <div class="param-item">
@@ -105,53 +205,58 @@
                                 <label for="supercell">Supercell</label>
                                 <select id="supercell" class="form-control">
                                     <option value="auto">Auto (optimal)</option>
-                                    <option value="1x1">1×1</option>
-                                    <option value="2x2">2×2</option>
-                                    <option value="3x3">3×3</option>
+                                    <option value="1x1">1x1</option>
+                                    <option value="2x2">2x2</option>
+                                    <option value="3x3">3x3</option>
+                                </select>
+                            </div>
+                            <div class="param-item">
+                                <label for="rotation-deg">Rotation (deg, z-axis)</label>
+                                <input type="number" id="rotation-deg" class="form-control" value="0" step="5">
+                            </div>
+                            <div class="param-item">
+                                <label for="xy-frac">XY frac (a,b in 0..1)</label>
+                                <input type="text" id="xy-frac" class="form-control" value="0.5 0.5" placeholder="x y">
+                            </div>
+                            <div class="param-item">
+                                <label for="stack-mode">Stack Mode</label>
+                                <select id="stack-mode" class="form-control">
+                                    <option value="separate">Separate (one per adsorbate)</option>
+                                    <option value="stacked">Stacked (all on one slab)</option>
                                 </select>
                             </div>
                         </div>
                     </div>
 
                     <div class="action-bar">
-                        <button id="build-adsorbate-btn" class="btn btn-primary">
-                            <span class="btn-icon">🚀</span>
+                        <button id="build-adsorbate-btn" class="btn btn-primary btn-lg">
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 3v14M3 10h14"/></svg>
                             Build Structure
                         </button>
                     </div>
-
                     <div id="adsorbate-result" class="result-panel hidden"></div>
                 </div>
-            </div>
 
-            <!-- Tab Content: Interface Builder -->
-            <div id="interface" class="tab-content">
-                <div class="panel">
-                    <h2 class="panel-title">Build Heterojunction Interfaces</h2>
-                    <p class="panel-description">
-                        Create coherent interfaces between two materials with automatic
-                        strain matching and supercell optimization.
-                    </p>
-
+                <!-- Interface Mode -->
+                <div id="builder-interface" class="sub-mode-content">
                     <div class="form-grid">
                         <div class="form-section">
                             <h3>Substrate Material</h3>
                             <div class="file-upload-area" id="substrate-upload">
                                 <input type="file" id="substrate-file" accept=".cif,.vasp,.poscar" hidden>
                                 <label for="substrate-file" class="file-upload-label">
-                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
                                     <span class="upload-text">Upload substrate</span>
                                 </label>
                             </div>
                             <div id="substrate-info" class="file-info hidden"></div>
                         </div>
-
                         <div class="form-section">
                             <h3>Film Material</h3>
                             <div class="file-upload-area" id="film-upload">
                                 <input type="file" id="film-file" accept=".cif,.vasp,.poscar" hidden>
                                 <label for="film-file" class="file-upload-label">
-                                    <span class="upload-icon">📁</span>
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
                                     <span class="upload-text">Upload film</span>
                                 </label>
                             </div>
@@ -171,64 +276,549 @@
                                 <input type="text" id="miller-film" class="form-control" value="0 0 1">
                             </div>
                             <div class="param-item">
-                                <label for="max-area">Max Area (Å²)</label>
+                                <label for="max-area">Max Area (Angstrom sq)</label>
                                 <input type="number" id="max-area" class="form-control" value="400" step="50">
                             </div>
                             <div class="param-item">
-                                <label for="strain-mode">Strain Mode</label>
+                                <label for="strain-mode">Lattice Matching</label>
                                 <select id="strain-mode" class="form-control">
-                                    <option value="bidirectional">Bidirectional</option>
-                                    <option value="film_only">Film only</option>
-                                    <option value="substrate_only">Substrate only</option>
+                                    <option value="bidirectional">Bidirectional comparison</option>
+                                    <option value="forward">Forward comparison</option>
                                 </select>
                             </div>
+                            <div class="param-item">
+                                <label for="iface-gap">Gap (Å)</label>
+                                <input type="number" id="iface-gap" class="form-control" value="2.5" step="0.1" min="1.0">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-vacuum">Vacuum (Å)</label>
+                                <input type="number" id="iface-vacuum" class="form-control" value="20.0" step="1.0" min="5.0">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-topk">Top-K candidates</label>
+                                <input type="number" id="iface-topk" class="form-control" value="3" step="1" min="1" max="10">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-term-pairs">Termination pairs scanned</label>
+                                <input type="number" id="iface-term-pairs" class="form-control" value="3" step="1" min="1" max="20">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-sub-term">Substrate termination</label>
+                                <select id="iface-sub-term" class="form-control">
+                                    <option value="">Auto (scan top pairs)</option>
+                                </select>
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-film-term">Film termination</label>
+                                <select id="iface-film-term" class="form-control">
+                                    <option value="">Auto (scan top pairs)</option>
+                                </select>
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-twist-deg">Film twist (deg)</label>
+                                <input type="number" id="iface-twist-deg" class="form-control" value="0" step="5">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-xy-shift-x">Film shift X</label>
+                                <input type="number" id="iface-xy-shift-x" class="form-control" value="0" step="0.1">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-xy-shift-y">Film shift Y</label>
+                                <input type="number" id="iface-xy-shift-y" class="form-control" value="0" step="0.1">
+                            </div>
+                            <div class="param-item">
+                                <label for="iface-xy-units">Shift units</label>
+                                <select id="iface-xy-units" class="form-control">
+                                    <option value="angstrom">Å (cartesian)</option>
+                                    <option value="fractional">frac of a,b</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.6rem;">
+                            <button type="button" id="iface-scan-terms-btn" class="btn btn-sm" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;padding:0.4rem 0.8rem;border-radius:8px;cursor:pointer;">
+                                Scan terminations
+                            </button>
+                            <small id="iface-term-status" style="color:var(--text-secondary);font-size:0.75rem;"></small>
                         </div>
                     </div>
 
                     <div class="action-bar">
-                        <button id="build-interface-btn" class="btn btn-primary">
-                            <span class="btn-icon">🚀</span>
+                        <button id="build-interface-btn" class="btn btn-primary btn-lg">
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 3v14M3 10h14"/></svg>
                             Build Interface
                         </button>
                     </div>
-
                     <div id="interface-result" class="result-panel hidden"></div>
                 </div>
             </div>
+        </section>
 
-            <!-- Tab Content: Layer Fixing -->
-            <div id="layers" class="tab-content">
-                <div class="panel">
-                    <h2 class="panel-title">Layer Management Tools</h2>
-                    <p class="panel-description">
-                        Fix layers for relaxation or split multi-layer structures into separate files.
-                    </p>
+        <!-- ========== Section: AI Generation ========== -->
+        <section id="ai-generation" class="page-section">
+            <div class="glass-panel">
+                <div class="ai-header">
+                    <div>
+                        <h2 class="panel-title">
+                            <span class="ai-badge">AI</span>
+                            AI-Powered Structure Generation
+                        </h2>
+                        <p class="panel-description">
+                            Generate fullerene structures and fullerene-perovskite interfaces using deep learning.
+                            Select from multiple model backends for comparison.
+                        </p>
+                    </div>
+                    <div class="ai-status" id="ai-status">
+                        <div class="status-indicator checking">
+                            <span class="status-dot"></span>
+                            <span class="status-text">Checking...</span>
+                        </div>
+                    </div>
+                </div>
 
-                    <!-- Mode Selection -->
+                <div class="ai-content" id="ai-content-main">
+                    <!-- Model Selector -->
                     <div class="form-section">
-                        <h3>Select Operation Mode</h3>
-                        <div class="mode-selector">
-                            <button class="mode-btn active" data-mode="fix">
-                                <span class="mode-icon">🔧</span>
-                                Fix Layers (Selective Dynamics)
+                        <h3>Model Backend</h3>
+                        <p class="param-hint" style="margin-bottom: 0.75rem;">
+                            Choose the generative model for fullerene structure prediction.
+                        </p>
+                        <div class="model-selector" id="model-selector">
+                            <label class="model-option active" data-model="egnn" id="model-opt-egnn">
+                                <input type="radio" name="ai-model" value="egnn" checked hidden>
+                                <div class="model-option-content">
+                                    <div class="model-option-header">
+                                        <span class="model-option-icon" style="color:#2563eb">
+                                            <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><circle cx="10" cy="10" r="6"/></svg>
+                                        </span>
+                                        <span class="model-option-name">EGNN + DDPM</span>
+                                        <span class="model-option-badge default-badge">Default</span>
+                                    </div>
+                                    <div class="model-option-desc">
+                                        Enhanced E(n) Equivariant GNN with Denoising Diffusion.
+                                        200-step DDIM sampling. Proven baseline.
+                                    </div>
+                                    <div class="model-option-status" id="model-status-egnn">
+                                        <span class="status-dot"></span>
+                                        <span class="status-text">Checking...</span>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="model-option" data-model="painn_fm" id="model-opt-painn_fm">
+                                <input type="radio" name="ai-model" value="painn_fm" hidden>
+                                <div class="model-option-content">
+                                    <div class="model-option-header">
+                                        <span class="model-option-icon" style="color:#7c3aed">
+                                            <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><circle cx="10" cy="10" r="6"/></svg>
+                                        </span>
+                                        <span class="model-option-name">PaiNN + Flow Matching</span>
+                                        <span class="model-option-badge new-badge">NEW</span>
+                                    </div>
+                                    <div class="model-option-desc">
+                                        Polarizable Atom Interaction NN with angular awareness.
+                                        50-step ODE sampling. Faster &amp; better bond angles.
+                                    </div>
+                                    <div class="model-option-status" id="model-status-painn_fm">
+                                        <span class="status-dot"></span>
+                                        <span class="status-text">Checking...</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- AI Mode Selector -->
+                    <div class="form-section">
+                        <h3>Generation Mode</h3>
+                        <div class="mode-selector ai-mode-selector">
+                            <button class="mode-btn active" data-ai-mode="fullerene">
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" style="width:18px;height:18px"><circle cx="10" cy="10" r="5"/><circle cx="10" cy="10" r="2"/></svg>
+                                Fullerene Only
                             </button>
-                            <button class="mode-btn" data-mode="split">
-                                <span class="mode-icon">✂️</span>
-                                Split into Layers
-                            </button>
-                            <button class="mode-btn" data-mode="pdos">
-                                <span class="mode-icon">🧪</span>
-                                PDOS Layer Indices (CP2K)
+                            <button class="mode-btn" data-ai-mode="interface">
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" style="width:18px;height:18px"><path d="M4 10h12M10 4v12"/></svg>
+                                Interface Generation
+                                <span class="ai-badge" style="font-size: 0.6rem; margin-left: 4px;">NEW</span>
                             </button>
                         </div>
                     </div>
 
+                    <!-- Fullerene-Only Mode -->
+                    <div id="ai-fullerene-mode">
+                        <div class="form-section">
+                            <h3>Generation Parameters</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="ai-num-atoms">Carbon Atoms</label>
+                                    <select id="ai-num-atoms" class="form-control">
+                                        <option value="60" selected>C60 (Buckminsterfullerene)</option>
+                                        <option value="70">C70 (Rugby ball)</option>
+                                        <option value="80">C80</option>
+                                        <option value="84">C84</option>
+                                        <option value="100">C100</option>
+                                        <option value="custom">Custom...</option>
+                                    </select>
+                                </div>
+                                <div class="param-item" id="custom-atoms-container" style="display: none;">
+                                    <label for="ai-custom-atoms">Custom Atom Count</label>
+                                    <input type="number" id="ai-custom-atoms" class="form-control" value="60" min="20" max="240" step="2">
+                                    <span class="param-hint">Must be even, 20-240 atoms</span>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-num-samples">Number of Structures</label>
+                                    <input type="number" id="ai-num-samples" class="form-control" value="5" min="1" max="50">
+                                    <span class="param-hint">1-50 structures per generation</span>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-output-format">Output Format</label>
+                                    <select id="ai-output-format" class="form-control">
+                                        <option value="xyz" selected>XYZ (Standard)</option>
+                                        <option value="json">JSON (with metadata)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <div class="collapsible-header" onclick="toggleAdvanced('ai-advanced')">
+                                <h3>Advanced Settings</h3>
+                                <span class="collapse-icon">&#9660;</span>
+                            </div>
+                            <div id="ai-advanced" class="collapsible-content" style="max-height:0;overflow:hidden;">
+                                <div class="param-grid" style="padding-top:0.75rem;">
+                                    <div class="param-item">
+                                        <label for="ai-temperature">
+                                            Sampling Temperature
+                                            <span class="info-icon" title="Higher = more diverse, Lower = more stable">i</span>
+                                        </label>
+                                        <input type="range" id="ai-temperature" min="0.5" max="1.5" step="0.1" value="1.0">
+                                        <output id="temp-value">1.0</output>
+                                    </div>
+                                    <div class="param-item">
+                                        <label>
+                                            <input type="checkbox" id="ai-validate" checked>
+                                            Validate connectivity
+                                        </label>
+                                        <span class="param-hint">Reject invalid structures</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="generate-ai-btn" class="btn btn-primary btn-lg">
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><path d="M10 2l2 4 4.5.7-3.3 3.2.8 4.6L10 12.2 5.9 14.5l.8-4.6L3.5 6.7 8 6z"/></svg>
+                                Generate Structures
+                            </button>
+                            <button id="batch-generate-btn" class="btn btn-secondary btn-lg">
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:18px;height:18px"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg>
+                                Batch Generate
+                            </button>
+                        </div>
+
+                        <div id="ai-progress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="ai-progress-fill"></div>
+                            </div>
+                            <p class="progress-text" id="ai-progress-text">Generating structures...</p>
+                        </div>
+
+                        <div id="ai-results" class="result-panel hidden"></div>
+
+                        <div id="ai-viewer" class="structure-viewer hidden">
+                            <div class="viewer-header">
+                                <h3>Structure Preview</h3>
+                                <div class="viewer-controls">
+                                    <button class="viewer-btn" id="btn-ball-stick" onclick="setRenderMode('ball-stick')" title="Ball & Stick">&#9883;</button>
+                                    <button class="viewer-btn" id="btn-wireframe" onclick="setRenderMode('wireframe')" title="Wireframe">&#9670;</button>
+                                    <button class="viewer-btn" onclick="rotateStructure()" title="Auto-rotate">&#8635;</button>
+                                    <button class="viewer-btn" onclick="resetView()" title="Reset view">&#8962;</button>
+                                    <button class="viewer-btn" onclick="downloadCurrent()" title="Download">&#128190;</button>
+                                </div>
+                            </div>
+                            <div class="viewer-canvas" id="viewer-canvas">
+                                <canvas id="structure-canvas" width="800" height="600"></canvas>
+                            </div>
+                            <div class="viewer-info" id="viewer-info"></div>
+                        </div>
+                    </div>
+
+                    <!-- Interface Generation Mode -->
+                    <div id="ai-interface-mode" style="display: none;">
+                        <div class="pipeline-overview">
+                            <div class="pipeline-step" id="pipe-step-1">
+                                <div class="pipeline-step-num">1</div>
+                                <div class="pipeline-step-label">Upload Base<br>Structure</div>
+                            </div>
+                            <div class="pipeline-arrow">&rarr;</div>
+                            <div class="pipeline-step" id="pipe-step-2">
+                                <div class="pipeline-step-num">2</div>
+                                <div class="pipeline-step-label"><span id="pipe-model-label">Model</span> generates<br>Fullerene</div>
+                            </div>
+                            <div class="pipeline-arrow">&rarr;</div>
+                            <div class="pipeline-step" id="pipe-step-3">
+                                <div class="pipeline-step-num">3</div>
+                                <div class="pipeline-step-label">Build Slab +<br>Place Adsorbate</div>
+                            </div>
+                            <div class="pipeline-arrow">&rarr;</div>
+                            <div class="pipeline-step" id="pipe-step-4">
+                                <div class="pipeline-step-num">4</div>
+                                <div class="pipeline-step-label">Local GNN<br>Refinement</div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Base Structure (Perovskite)</h3>
+                            <p class="param-hint" style="margin-bottom: 1rem;">
+                                Upload a bulk perovskite CIF/VASP file. The pipeline will generate a slab,
+                                produce a fullerene, place it on the surface, and optionally refine with a local GNN.
+                            </p>
+                            <div class="file-upload-area" id="ai-interface-base-upload">
+                                <input type="file" id="ai-interface-base-file" accept=".cif,.vasp,.poscar" hidden>
+                                <label for="ai-interface-base-file" class="file-upload-label">
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
+                                    <span class="upload-text">Upload Perovskite Structure</span>
+                                    <span class="upload-hint">.cif, .vasp, .poscar</span>
+                                </label>
+                            </div>
+                            <div id="ai-interface-base-info" class="file-info hidden"></div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Fullerene &amp; Slab Parameters</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="ai-iface-num-atoms">Fullerene Size</label>
+                                    <select id="ai-iface-num-atoms" class="form-control">
+                                        <option value="60" selected>C60 (Buckminsterfullerene)</option>
+                                        <option value="70">C70</option>
+                                        <option value="80">C80</option>
+                                        <option value="84">C84</option>
+                                        <option value="100">C100</option>
+                                    </select>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-num-samples">Number of Samples</label>
+                                    <select id="ai-iface-num-samples" class="form-control">
+                                        <option value="1" selected>1</option>
+                                        <option value="3">3</option>
+                                        <option value="5">5</option>
+                                        <option value="10">10</option>
+                                    </select>
+                                    <span class="param-hint">Generate multiple candidates</span>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-miller">Miller Index</label>
+                                    <input type="text" id="ai-iface-miller" class="form-control" value="0 0 1" placeholder="h k l">
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-slab-thickness">Slab Thickness (Angstrom)</label>
+                                    <input type="number" id="ai-iface-slab-thickness" class="form-control" value="18.0" step="1" min="5">
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-vacuum">Vacuum (Angstrom)</label>
+                                    <input type="number" id="ai-iface-vacuum" class="form-control" value="20.0" step="1" min="5">
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-separation">Separation (Angstrom)</label>
+                                    <input type="number" id="ai-iface-separation" class="form-control" value="3.2" step="0.1" min="1.0">
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-buffer">Buffer (Angstrom)</label>
+                                    <input type="number" id="ai-iface-buffer" class="form-control" value="10.0" step="1" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <div class="collapsible-header" onclick="toggleAdvanced('ai-iface-advanced')">
+                                <h3>Advanced Placement Settings</h3>
+                                <span class="collapse-icon">&#9660;</span>
+                            </div>
+                            <div id="ai-iface-advanced" class="collapsible-content" style="max-height:0;overflow:hidden;">
+                                <div class="param-grid" style="padding-top:0.75rem;">
+                                    <div class="param-item">
+                                        <label for="ai-iface-xy-frac-x">XY Fractional Position</label>
+                                        <div style="display:flex;gap:0.5rem;">
+                                            <input type="number" id="ai-iface-xy-frac-x" class="form-control" value="0.5" step="0.05" min="0" max="1" style="width:50%">
+                                            <input type="number" id="ai-iface-xy-frac-y" class="form-control" value="0.5" step="0.05" min="0" max="1" style="width:50%">
+                                        </div>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-supercell">Supercell (nx, ny)</label>
+                                        <select id="ai-iface-supercell" class="form-control">
+                                            <option value="auto" selected>Auto (optimal)</option>
+                                            <option value="1,1">1x1</option>
+                                            <option value="2,2">2x2</option>
+                                            <option value="3,3">3x3</option>
+                                            <option value="4,4">4x4</option>
+                                        </select>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-termination">Surface Termination</label>
+                                        <select id="ai-iface-termination" class="form-control">
+                                            <option value="auto" selected>Auto (best)</option>
+                                            <option value="PbI">PbI-terminated</option>
+                                            <option value="FAI">FAI-terminated</option>
+                                            <option value="MAI">MAI-terminated</option>
+                                        </select>
+                                    </div>
+                                    <div class="param-item">
+                                        <label for="ai-iface-layer-tol">Layer Tolerance (Angstrom)</label>
+                                        <input type="number" id="ai-iface-layer-tol" class="form-control" value="1.5" step="0.1" min="0.5">
+                                    </div>
+                                    <div class="param-item">
+                                        <label>
+                                            <input type="checkbox" id="ai-iface-ddim">
+                                            Use DDIM sampling
+                                        </label>
+                                        <span class="param-hint">Faster but may reduce quality</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>
+                                Local GNN Refinement
+                                <span class="ai-badge gnn-badge" id="gnn-status-badge">GNN</span>
+                            </h3>
+                            <p class="param-hint" style="margin-bottom: 1rem;">
+                                Optional: refine adsorbate-surface geometry using a local message-passing GNN.
+                            </p>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label>
+                                        <input type="checkbox" id="ai-iface-local-refine" checked>
+                                        Enable local GNN refinement
+                                    </label>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ai-iface-refine-scope">Refinement Scope</label>
+                                    <select id="ai-iface-refine-scope" class="form-control">
+                                        <option value="adsorbate" selected>Adsorbate only</option>
+                                        <option value="interface">Interface region</option>
+                                        <option value="all">All atoms</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="gnn-info-panel" class="gnn-info-panel">
+                                <span id="gnn-info-text">Checking GNN availability...</span>
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="generate-interface-ai-btn" class="btn btn-primary btn-lg" disabled>
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><path d="M5 3l10 7-10 7z"/></svg>
+                                Generate Interface Structure
+                            </button>
+                        </div>
+
+                        <div id="ai-iface-progress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="ai-iface-progress-fill"></div>
+                            </div>
+                            <p class="progress-text" id="ai-iface-progress-text">Generating interface...</p>
+                        </div>
+
+                        <div id="ai-iface-results" class="result-panel hidden"></div>
+                    </div>
+
+                    <!-- Model Information -->
+                    <div class="info-panel">
+                        <h4>About the AI Models</h4>
+                        <div class="info-grid" id="ai-info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Active Model:</span>
+                                <span class="info-value" id="info-active-model">EGNN + DDPM</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Architecture:</span>
+                                <span class="info-value" id="info-architecture">EGNN</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Sampling:</span>
+                                <span class="info-value" id="info-sampling">DDPM / DDIM</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Local Refiner:</span>
+                                <span class="info-value">Message-Passing GNN</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Training Data:</span>
+                                <span class="info-value">Fullerene Database (C20-C720)</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Features:</span>
+                                <span class="info-value">SE(3) Equivariant, EMA, Residuals</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Models Available:</span>
+                                <span class="info-value" id="info-models-count">&mdash;</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Generation Speed:</span>
+                                <span class="info-value" id="info-gen-speed">~2-5 seconds/structure</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Not Available -->
+                <div id="ai-unavailable" class="unavailable-panel" style="display: none;">
+                    <div class="unavailable-icon">&#9888;</div>
+                    <h3>AI Module Unavailable</h3>
+                    <p>The Fullerene AI generation module is not currently available.</p>
+                    <div class="unavailable-details">
+                        <h4>Possible reasons:</h4>
+                        <ul>
+                            <li>Model checkpoint not found</li>
+                            <li>Required dependencies missing</li>
+                            <li>Configuration error</li>
+                        </ul>
+                        <p class="help-text">Server reported: <code id="ai-unavailable-reason">AI module not available</code></p>
+                        <p class="help-text">Module path: <code id="ai-unavailable-basepath">fullerene_e3gen</code></p>
+                        <p class="help-text">Expected checkpoint: <code id="ai-unavailable-checkpoint">fullerene_e3gen/checkpoints/best_model.pt</code></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== Section: Analysis ========== -->
+        <section id="analysis" class="page-section">
+            <div class="glass-panel">
+                <h2 class="panel-title">Analysis Tools</h2>
+                <p class="panel-description">
+                    Fix layers for relaxation, split structures, generate PDOS indices, or compute density differences.
+                </p>
+
+                <!-- Sub-mode toggle -->
+                <div class="sub-mode-toggle" id="analysis-mode-toggle">
+                    <button class="sub-mode-btn active" data-analysis-mode="fix">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 1l4 4-8 8H3v-4z"/></svg>
+                        Fix Layers
+                    </button>
+                    <button class="sub-mode-btn" data-analysis-mode="split">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v12M2 8h12"/></svg>
+                        Split Layers
+                    </button>
+                    <button class="sub-mode-btn" data-analysis-mode="pdos">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><path d="M8 5v6M5 8h6"/></svg>
+                        PDOS Indices
+                    </button>
+                    <button class="sub-mode-btn" data-analysis-mode="density">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V6M5 14V4M8 14V8M11 14V2M14 14V6"/></svg>
+                        Density &amp; DOS
+                    </button>
+                </div>
+
+                <!-- Fix Layers -->
+                <div id="analysis-fix" class="sub-mode-content active">
                     <div class="form-section">
                         <h3>Structure File</h3>
                         <div class="file-upload-area" id="layers-upload">
                             <input type="file" id="layers-file" accept=".cif,.vasp,.poscar,.xyz" hidden>
                             <label for="layers-file" class="file-upload-label">
-                                <span class="upload-icon">📁</span>
+                                <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
                                 <span class="upload-text">Upload structure</span>
                                 <span class="upload-hint">.cif, .vasp, .xyz</span>
                             </label>
@@ -236,8 +826,7 @@
                         <div id="layers-file-info" class="file-info hidden"></div>
                     </div>
 
-                    <!-- Fix Layers Mode -->
-                    <div id="fix-mode-params" class="form-section">
+                    <div class="form-section" id="fix-mode-params">
                         <h3>Fixing Parameters</h3>
                         <div class="param-grid">
                             <div class="param-item">
@@ -245,73 +834,76 @@
                                 <input type="number" id="n-fix-layers" class="form-control" value="3" min="1" max="10">
                             </div>
                             <div class="param-item">
-                                <label for="include-molecules">
+                                <label>
                                     <input type="checkbox" id="include-molecules" checked>
                                     Include whole molecules
                                 </label>
                                 <span class="param-hint">Ensures organic molecules aren't split</span>
                             </div>
                         </div>
-
                         <div class="action-bar">
                             <button id="fix-layers-btn" class="btn btn-primary">
-                                <span class="btn-icon">🔧</span>
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:16px;height:16px"><path d="M14 2l4 4-10 10H4v-4z"/></svg>
                                 Fix Layers
                             </button>
                         </div>
                     </div>
+                    <div id="layers-result" class="result-panel hidden"></div>
+                </div>
 
-                    <!-- Split Layers Mode -->
-                    <div id="split-mode-params" class="form-section hidden">
+                <!-- Split Layers -->
+                <div id="analysis-split" class="sub-mode-content">
+                    <div class="form-section">
+                        <h3>Structure File</h3>
+                        <p class="param-hint">Use the same file uploaded in Fix Layers, or upload a new one above.</p>
+                    </div>
+                    <div class="form-section" id="split-mode-params">
                         <h3>Splitting Parameters</h3>
                         <div class="param-grid">
                             <div class="param-item">
                                 <label for="n-interfaces">Number of Interfaces</label>
                                 <input type="number" id="n-interfaces" class="form-control" value="1" min="1" max="5">
-                                <span class="param-hint">1 interface → 2 layers, 2 interfaces → 3 layers</span>
+                                <span class="param-hint">1 interface = 2 layers</span>
                             </div>
                             <div class="param-item">
-                                <label for="min-gap">Minimum Gap (Å)</label>
+                                <label for="min-gap">Minimum Gap (Angstrom)</label>
                                 <input type="number" id="min-gap" class="form-control" value="1.5" step="0.1" min="0.0">
-                                <span class="param-hint">Recommended: 1.5-2.0 Å to avoid intra-layer gaps</span>
                             </div>
                             <div class="param-item">
-                                <label for="smart-detection">
+                                <label>
                                     <input type="checkbox" id="smart-detection" checked>
                                     Smart detection (composition-aware)
                                 </label>
-                                <span class="param-hint">Detects composition changes across gaps</span>
                             </div>
                         </div>
-
                         <div class="action-bar">
                             <button id="split-layers-btn" class="btn btn-primary">
-                                <span class="btn-icon">✂️</span>
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:16px;height:16px"><path d="M10 3v14M3 10h14"/></svg>
                                 Split into Layers
                             </button>
                         </div>
                     </div>
+                    <div id="split-layers-result" class="result-panel hidden"></div>
+                </div>
 
-                    <!-- PDOS Layers Mode -->
-                    <div id="pdos-mode-params" class="form-section hidden">
+                <!-- PDOS Indices -->
+                <div id="analysis-pdos" class="sub-mode-content">
+                    <div class="form-section" id="pdos-mode-params">
                         <h3>PDOS Layer Index Parameters</h3>
                         <div class="param-grid">
                             <div class="param-item">
                                 <label for="pdos-n-interfaces">Number of Interfaces</label>
                                 <input type="number" id="pdos-n-interfaces" class="form-control" value="1" min="1" step="1">
-                                <span class="param-hint">2 interfaces → 3 layers</span>
                             </div>
                             <div class="param-item">
-                                <label for="pdos-min-gap">Minimum Gap (Å)</label>
+                                <label for="pdos-min-gap">Minimum Gap (Angstrom)</label>
                                 <input type="number" id="pdos-min-gap" class="form-control" value="1.5" min="0" step="0.1">
-                                <span class="param-hint">Recommended: 1.5–2.0 Å</span>
                             </div>
                             <div class="param-item">
-                                <label for="pdos-smart-detection">
+                                <label>
                                     <input type="checkbox" id="pdos-smart-detection" checked>
-                                    Smart detection (composition-aware)
+                                    Smart detection
                                 </label>
-                                <span class="param-hint">Detects composition changes across gaps</span>
                             </div>
                             <div class="param-item">
                                 <label for="pdos-filename">PDOS Filename</label>
@@ -322,30 +914,23 @@
                                 <input type="number" id="pdos-nlumo" class="form-control" value="250" min="0" step="1">
                             </div>
                         </div>
-
                         <div class="action-bar">
                             <button id="pdos-layers-btn" class="btn btn-primary">
-                                <span class="btn-icon">🧪</span>
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:16px;height:16px"><circle cx="10" cy="10" r="6"/><path d="M10 7v6M7 10h6"/></svg>
                                 Generate PDOS Lists
                             </button>
                         </div>
                     </div>
-
-                    <div id="layers-result" class="result-panel hidden"></div>
+                    <div id="pdos-layers-result" class="result-panel hidden"></div>
                 </div>
-            </div>
 
-            <!-- Tab Content: Density Analysis -->
-            <div id="density" class="tab-content">
-                <div class="panel">
-                    <h2 class="panel-title">Charge Density Difference</h2>
+                <!-- Density & DOS -->
+                <div id="analysis-density" class="sub-mode-content">
+                    <h3 class="panel-title" style="font-size:1.35rem;">Charge Density Difference</h3>
                     <p class="panel-description">
-                        Compute Δρ = ρ(interface) - ρ(layer1) - ρ(layer2) from
-                        CP2K cube files for charge transfer analysis.
+                        Compute delta-rho from CP2K cube files.
                     </p>
-
                     <div class="form-section">
-                        <h3>Cube Files</h3>
                         <div class="form-grid">
                             <div class="file-upload-area">
                                 <input type="file" id="interface-cube" accept=".cube" hidden>
@@ -367,28 +952,19 @@
                             </div>
                         </div>
                     </div>
-
                     <div class="action-bar">
-                        <button id="compute-density-btn" class="btn btn-primary">
-                            <span class="btn-icon">📈</span>
-                            Compute Δρ
-                        </button>
+                        <button id="compute-density-btn" class="btn btn-primary">Compute delta-rho</button>
                     </div>
-
                     <div id="density-result" class="result-panel hidden"></div>
 
                     <div class="divider"></div>
 
-                    <h2 class="panel-title">TDOS + PDOS Visualization</h2>
+                    <h3 class="panel-title" style="font-size:1.35rem;">TDOS + PDOS Visualization</h3>
                     <p class="panel-description">
                         Upload CP2K TDOS/PDOS outputs to generate a single overlay plot.
-                        Add multiple PDOS files for multi-layer interfaces.
                     </p>
-
                     <div class="form-section">
-                        <h3>DOS Files</h3>
                         <div class="dos-upload-container">
-                            <!-- TDOS Upload (always shown) -->
                             <div class="file-upload-area" id="tdos-upload">
                                 <input type="file" id="tdos-file" accept=".dos" hidden>
                                 <label for="tdos-file" class="file-upload-label">
@@ -397,20 +973,14 @@
                             </div>
                             <div id="tdos-info" class="file-info hidden"></div>
                         </div>
-                        
-                        <!-- Dynamic PDOS Upload Container -->
-                        <div id="pdos-upload-container">
-                            <!-- PDOS uploads will be added here dynamically -->
-                        </div>
-                        
+                        <div id="pdos-upload-container"></div>
                         <div class="pdos-controls">
                             <button type="button" id="add-pdos-btn" class="btn btn-secondary btn-sm">
-                                <span class="btn-icon">➕</span> Add PDOS File
+                                + Add PDOS File
                             </button>
-                            <span class="pdos-hint">Add one PDOS file per layer (N interfaces → N+1 layers)</span>
+                            <span class="pdos-hint">Add one PDOS file per layer</span>
                         </div>
                     </div>
-
                     <div class="form-section">
                         <h3>Plot Settings</h3>
                         <div class="param-grid">
@@ -423,9 +993,8 @@
                                 <input type="text" id="dos-output-name" class="form-control" placeholder="dos_tdos_pdos_overlay">
                             </div>
                             <div class="param-item">
-                                <label for="dos-sigma">Gaussian Broadening σ (eV)</label>
+                                <label for="dos-sigma">Gaussian Broadening (eV)</label>
                                 <input type="number" id="dos-sigma" class="form-control" value="0.12" min="0" step="0.01">
-                                <span class="param-hint">0.08–0.20 eV recommended</span>
                             </div>
                             <div class="param-item">
                                 <label for="dos-grid-step">Energy Grid Step (eV)</label>
@@ -440,69 +1009,505 @@
                                 <input type="number" id="dos-x-max" class="form-control" placeholder="auto" step="0.5">
                             </div>
                             <div class="param-item">
-                                <label for="dos-normalize">
-                                    <input type="checkbox" id="dos-normalize">
-                                    Normalize curves (0–1)
-                                </label>
-                                <span class="param-hint">Useful for comparing shapes</span>
+                                <label><input type="checkbox" id="dos-normalize"> Normalize curves (0-1)</label>
                             </div>
                             <div class="param-item">
                                 <label for="dos-tdos-source">TDOS Data Source</label>
                                 <select id="dos-tdos-source" class="form-control">
-                                    <option value="auto" selected>Auto detect (recommended)</option>
-                                    <option value="occupation">Occupation / ΔE (states/eV)</option>
-                                    <option value="density">Density column (raw)</option>
+                                    <option value="auto" selected>Auto detect</option>
+                                    <option value="occupation">Occupation</option>
+                                    <option value="density">Density column</option>
                                 </select>
-                                <span class="param-hint">Use Occupation for correct DOS magnitude</span>
                             </div>
                             <div class="param-item">
                                 <label for="dos-pdos-scale">PDOS Scaling</label>
                                 <select id="dos-pdos-scale" class="form-control">
-                                    <option value="per_atom" selected>Per atom (recommended)</option>
+                                    <option value="per_atom" selected>Per atom</option>
                                     <option value="match_tdos">Match TDOS peak</option>
                                     <option value="none">No scaling</option>
                                 </select>
-                                <span class="param-hint">Prevents PDOS from overwhelming TDOS</span>
                             </div>
                             <div class="param-item">
                                 <label for="dos-tdos-scale">TDOS Scaling</label>
                                 <select id="dos-tdos-scale" class="form-control">
                                     <option value="none" selected>No scaling</option>
-                                    <option value="per_atom">Per atom (total atoms)</option>
+                                    <option value="per_atom">Per atom</option>
                                 </select>
-                                <span class="param-hint">Divides TDOS by total atom count</span>
                             </div>
                             <div class="param-item">
                                 <label for="dos-tdos-atoms">TDOS Total Atoms</label>
                                 <input type="number" id="dos-tdos-atoms" class="form-control" placeholder="auto">
-                                <span class="param-hint">Auto uses sum of PDOS list atoms</span>
                             </div>
                         </div>
                     </div>
-
                     <div class="action-bar">
-                        <button id="plot-dos-btn" class="btn btn-primary">
-                            <span class="btn-icon">🖼️</span>
-                            Generate DOS Plot
-                        </button>
+                        <button id="plot-dos-btn" class="btn btn-primary">Generate DOS Plot</button>
                     </div>
-
                     <div id="dos-result" class="result-panel hidden"></div>
                 </div>
             </div>
-        </div>
+        </section>
+
+        <!-- ========== Section: DFT Pipeline ========== -->
+        <section id="dft-pipeline" class="page-section">
+            <div class="glass-panel">
+                <h2 class="panel-title">DFT Pipeline</h2>
+                <p class="panel-description">
+                    Build perovskite/fullerene interfaces and generate CP2K input files + SLURM scripts.
+                </p>
+
+                <div class="pipeline-overview">
+                    <div class="pipeline-step" id="dft-pipe-step-1">
+                        <div class="pipeline-step-num">1</div>
+                        <div class="pipeline-step-label">Upload / Generate<br>Structures</div>
+                    </div>
+                    <div class="pipeline-arrow">&rarr;</div>
+                    <div class="pipeline-step" id="dft-pipe-step-2">
+                        <div class="pipeline-step-num">2</div>
+                        <div class="pipeline-step-label">Build<br>Interface</div>
+                    </div>
+                    <div class="pipeline-arrow">&rarr;</div>
+                    <div class="pipeline-step" id="dft-pipe-step-3">
+                        <div class="pipeline-step-num">3</div>
+                        <div class="pipeline-step-label">Download<br>DFT Files</div>
+                    </div>
+                </div>
+
+                <!-- Source Mode Toggle -->
+                <div class="form-section">
+                    <h3>Input Source</h3>
+                    <div class="mode-selector pipeline-source-selector">
+                        <button class="mode-btn active" data-pipeline-source="upload">
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px"><path d="M10 14V4M6 8l4-4 4 4"/><path d="M3 14v2a2 2 0 002 2h10a2 2 0 002-2v-2"/></svg>
+                            Upload Structures
+                        </button>
+                        <button class="mode-btn" data-pipeline-source="ai">
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px"><path d="M10 2l2 4 4.5.7-3.3 3.2.8 4.6L10 12.2 5.9 14.5l.8-4.6L3.5 6.7 8 6z"/></svg>
+                            AI Generate Fullerene
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Upload Mode -->
+                <div id="pipeline-upload-mode">
+                    <div class="form-grid">
+                        <div class="form-section">
+                            <h3>Perovskite (Slab)</h3>
+                            <div class="file-upload-area" id="pipeline-perovskite-upload">
+                                <input type="file" id="pipeline-perovskite-file" accept=".cif,.vasp,.poscar" hidden>
+                                <label for="pipeline-perovskite-file" class="file-upload-label">
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
+                                    <span class="upload-text">Upload perovskite</span>
+                                    <span class="upload-hint">.cif, .vasp, .poscar</span>
+                                </label>
+                            </div>
+                            <div id="pipeline-perovskite-info" class="file-info hidden"></div>
+                        </div>
+                        <div class="form-section">
+                            <h3>Fullerene (Adsorbate)</h3>
+                            <div class="file-upload-area" id="pipeline-fullerene-upload">
+                                <input type="file" id="pipeline-fullerene-file" accept=".cif,.vasp,.poscar,.xyz" hidden>
+                                <label for="pipeline-fullerene-file" class="file-upload-label">
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
+                                    <span class="upload-text">Upload fullerene</span>
+                                    <span class="upload-hint">.cif, .vasp, .poscar, .xyz</span>
+                                </label>
+                            </div>
+                            <div id="pipeline-fullerene-info" class="file-info hidden"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Mode -->
+                <div id="pipeline-ai-mode" style="display: none;">
+                    <div class="form-grid">
+                        <div class="form-section">
+                            <h3>Perovskite (Slab)</h3>
+                            <div class="file-upload-area" id="pipeline-ai-perovskite-upload">
+                                <input type="file" id="pipeline-ai-perovskite-file" accept=".cif,.vasp,.poscar" hidden>
+                                <label for="pipeline-ai-perovskite-file" class="file-upload-label">
+                                    <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
+                                    <span class="upload-text">Upload perovskite</span>
+                                </label>
+                            </div>
+                            <div id="pipeline-ai-perovskite-info" class="file-info hidden"></div>
+                        </div>
+                        <div class="form-section">
+                            <h3>AI Fullerene Generation</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="pipeline-ai-num-carbon">Carbon Atoms</label>
+                                    <select id="pipeline-ai-num-carbon" class="form-control">
+                                        <option value="60" selected>C60</option>
+                                        <option value="70">C70</option>
+                                        <option value="80">C80</option>
+                                        <option value="84">C84</option>
+                                        <option value="100">C100</option>
+                                    </select>
+                                </div>
+                                <div class="param-item">
+                                    <label for="pipeline-ai-num-samples">Samples</label>
+                                    <input type="number" id="pipeline-ai-num-samples" class="form-control" value="1" min="1" max="10">
+                                </div>
+                                <div class="param-item">
+                                    <label for="pipeline-ai-model">Model</label>
+                                    <select id="pipeline-ai-model" class="form-control">
+                                        <option value="egnn" selected>EGNN + DDPM</option>
+                                        <option value="painn_fm">PaiNN + FM</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interface Parameters -->
+                <div class="form-section">
+                    <h3>Interface Parameters</h3>
+                    <div class="param-grid">
+                        <div class="param-item">
+                            <label for="pipeline-miller">Miller Index</label>
+                            <input type="text" id="pipeline-miller" class="form-control" value="0 0 1" placeholder="h k l">
+                        </div>
+                        <div class="param-item">
+                            <label for="pipeline-slab-thickness">Slab Thickness (Angstrom)</label>
+                            <input type="number" id="pipeline-slab-thickness" class="form-control" value="18.0" step="1" min="5">
+                        </div>
+                        <div class="param-item">
+                            <label for="pipeline-vacuum">Vacuum (Angstrom)</label>
+                            <input type="number" id="pipeline-vacuum" class="form-control" value="20.0" step="1" min="5">
+                        </div>
+                        <div class="param-item">
+                            <label for="pipeline-separation">Separation (Angstrom)</label>
+                            <input type="number" id="pipeline-separation" class="form-control" value="3.2" step="0.1" min="1.0">
+                        </div>
+                        <div class="param-item">
+                            <label for="pipeline-supercell">Supercell</label>
+                            <select id="pipeline-supercell" class="form-control">
+                                <option value="auto" selected>Auto</option>
+                                <option value="1,1">1x1</option>
+                                <option value="2,2">2x2</option>
+                                <option value="3,3">3x3</option>
+                                <option value="4,4">4x4</option>
+                            </select>
+                        </div>
+                        <div class="param-item">
+                            <label for="pipeline-termination">Termination</label>
+                            <select id="pipeline-termination" class="form-control">
+                                <option value="auto" selected>Auto</option>
+                                <option value="PbI">PbI</option>
+                                <option value="FAI">FAI</option>
+                                <option value="MAI">MAI</option>
+                            </select>
+                        </div>
+                        <div class="param-item">
+                            <label for="pipeline-fix-layers">Fix Bottom Layers</label>
+                            <input type="number" id="pipeline-fix-layers" class="form-control" value="2" min="0" max="10">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DFT Settings -->
+                <div class="form-section">
+                    <div class="collapsible-header" onclick="toggleAdvanced('pipeline-dft')">
+                        <h3>DFT Settings</h3>
+                        <span class="collapse-icon">&#9660;</span>
+                    </div>
+                    <div id="pipeline-dft" class="collapsible-content" style="max-height:0;overflow:hidden;">
+                        <div class="param-grid" style="padding-top:0.75rem;">
+                            <div class="param-item">
+                                <label for="pipeline-functional">Functional</label>
+                                <select id="pipeline-functional" class="form-control">
+                                    <option value="PBE" selected>PBE</option>
+                                    <option value="PBE0">PBE0</option>
+                                    <option value="BLYP">BLYP</option>
+                                </select>
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-cutoff">Cutoff (Ry)</label>
+                                <input type="number" id="pipeline-cutoff" class="form-control" value="400" step="50" min="100">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-rel-cutoff">Rel Cutoff (Ry)</label>
+                                <input type="number" id="pipeline-rel-cutoff" class="form-control" value="60" step="10" min="20">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-max-scf">Max SCF</label>
+                                <input type="number" id="pipeline-max-scf" class="form-control" value="300" step="50" min="50">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-dispersion">Dispersion</label>
+                                <select id="pipeline-dispersion" class="form-control">
+                                    <option value="DFT-D3" selected>DFT-D3</option>
+                                    <option value="DFT-D3(BJ)">DFT-D3(BJ)</option>
+                                    <option value="">None</option>
+                                </select>
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-geo-opt-max">GEO_OPT Max Iter</label>
+                                <input type="number" id="pipeline-geo-opt-max" class="form-control" value="200" step="50" min="10">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-geo-opt-conv">GEO_OPT Convergence</label>
+                                <input type="number" id="pipeline-geo-opt-conv" class="form-control" value="0.003" step="0.001" min="0.0001">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SLURM Settings -->
+                <div class="form-section">
+                    <div class="collapsible-header" onclick="toggleAdvanced('pipeline-slurm')">
+                        <h3>SLURM Settings</h3>
+                        <span class="collapse-icon">&#9660;</span>
+                    </div>
+                    <div id="pipeline-slurm" class="collapsible-content" style="max-height:0;overflow:hidden;">
+                        <div class="param-grid" style="padding-top:0.75rem;">
+                            <div class="param-item">
+                                <label for="pipeline-partition">Partition</label>
+                                <input type="text" id="pipeline-partition" class="form-control" value="gpu">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-nodes">Nodes</label>
+                                <input type="number" id="pipeline-nodes" class="form-control" value="1" min="1">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-ntasks">Tasks per Node</label>
+                                <input type="number" id="pipeline-ntasks" class="form-control" value="48" min="1">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-time">Wall Time</label>
+                                <input type="text" id="pipeline-time" class="form-control" value="24:00:00" placeholder="HH:MM:SS">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-cp2k-module">CP2K Module</label>
+                                <input type="text" id="pipeline-cp2k-module" class="form-control" value="cp2k/2024.1">
+                            </div>
+                            <div class="param-item">
+                                <label for="pipeline-cp2k-binary">CP2K Binary</label>
+                                <input type="text" id="pipeline-cp2k-binary" class="form-control" value="cp2k.psmp">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-bar">
+                    <button id="pipeline-run-btn" class="btn btn-primary btn-lg">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><path d="M5 3l10 7-10 7z"/></svg>
+                        Build Interfaces &amp; Generate DFT Inputs
+                    </button>
+                </div>
+
+                <div id="pipeline-progress" class="progress-container" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="pipeline-progress-fill"></div>
+                    </div>
+                    <p class="progress-text" id="pipeline-progress-text">Processing...</p>
+                </div>
+                <div id="pipeline-result" class="result-panel hidden"></div>
+
+                <div class="divider"></div>
+
+                <h2 class="panel-title" style="font-size:1.35rem;">Standalone DFT Prep</h2>
+                <p class="panel-description">
+                    Upload any structure to generate CP2K input files + SLURM scripts without building an interface.
+                </p>
+                <div class="form-section">
+                    <div class="file-upload-area" id="pipeline-dft-structure-upload">
+                        <input type="file" id="pipeline-dft-structure-file" accept=".cif,.vasp,.poscar,.xyz" hidden>
+                        <label for="pipeline-dft-structure-file" class="file-upload-label">
+                            <span class="upload-icon"><svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 24V10M12 16l6-6 6 6"/><path d="M6 24v4a2 2 0 002 2h20a2 2 0 002-2v-4"/></svg></span>
+                            <span class="upload-text">Upload structure</span>
+                            <span class="upload-hint">.cif, .vasp, .poscar, .xyz</span>
+                        </label>
+                    </div>
+                    <div id="pipeline-dft-structure-info" class="file-info hidden"></div>
+                </div>
+                <div class="action-bar">
+                    <button id="pipeline-dft-only-btn" class="btn btn-secondary btn-lg">Generate DFT Inputs Only</button>
+                </div>
+                <div id="pipeline-dft-result" class="result-panel hidden"></div>
+            </div>
+        </section>
+
+        <!-- ========== Section: Algorithm ========== -->
+        <section id="algorithm" class="page-section">
+            <div class="glass-panel">
+                <h2 class="panel-title">Algorithm Overview</h2>
+                <p class="algo-intro">
+                    InterfaceML uses two generative model architectures for fullerene structure prediction:
+                    an <strong>EGNN</strong> with denoising diffusion (DDPM/DDIM) and a <strong>PaiNN</strong>
+                    with flow matching. Both are SE(3)-equivariant, meaning they respect rotational and
+                    translational symmetry. Below are the key workflows and equations.
+                </p>
+
+                <!-- Chart 1: Model Architecture Comparison -->
+                <div class="algo-charts-grid">
+                    <div class="algo-chart-card">
+                        <h4>EGNN + DDPM Pipeline</h4>
+                        <svg viewBox="0 0 380 180" xmlns="http://www.w3.org/2000/svg" style="font-family:Inter,sans-serif;">
+                            <defs>
+                                <linearGradient id="gBlue" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient>
+                                <marker id="arrowB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#2563eb"/></marker>
+                            </defs>
+                            <rect x="4" y="30" width="68" height="36" rx="8" fill="url(#gBlue)" opacity="0.9"/><text x="38" y="52" text-anchor="middle" fill="white" font-size="9" font-weight="600">Input</text>
+                            <line x1="72" y1="48" x2="88" y2="48" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowB)"/>
+                            <rect x="88" y="30" width="68" height="36" rx="8" fill="url(#gBlue)" opacity="0.85"/><text x="122" y="46" text-anchor="middle" fill="white" font-size="8" font-weight="600">RBF</text><text x="122" y="57" text-anchor="middle" fill="white" font-size="7">Encoding</text>
+                            <line x1="156" y1="48" x2="172" y2="48" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowB)"/>
+                            <rect x="172" y="24" width="72" height="48" rx="8" fill="url(#gBlue)" opacity="0.8"/><text x="208" y="44" text-anchor="middle" fill="white" font-size="8" font-weight="600">Message</text><text x="208" y="55" text-anchor="middle" fill="white" font-size="7">Passing (attn)</text>
+                            <line x1="244" y1="48" x2="260" y2="48" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowB)"/>
+                            <rect x="260" y="24" width="72" height="48" rx="8" fill="url(#gBlue)" opacity="0.75"/><text x="296" y="44" text-anchor="middle" fill="white" font-size="8" font-weight="600">Coord</text><text x="296" y="55" text-anchor="middle" fill="white" font-size="7">Update</text>
+                            <text x="296" y="90" text-anchor="middle" fill="#64748b" font-size="8">1000-step denoise</text>
+                            <rect x="4" y="110" width="370" height="28" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="0.5"/>
+                            <text x="189" y="128" text-anchor="middle" fill="#2563eb" font-size="9" font-weight="600">Equivariant: f(Rx + t) = Rf(x) + t</text>
+                        </svg>
+                    </div>
+                    <div class="algo-chart-card">
+                        <h4>PaiNN + Flow Matching Pipeline</h4>
+                        <svg viewBox="0 0 380 180" xmlns="http://www.w3.org/2000/svg" style="font-family:Inter,sans-serif;">
+                            <defs>
+                                <linearGradient id="gPurple" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient>
+                                <marker id="arrowP" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#7c3aed"/></marker>
+                            </defs>
+                            <rect x="4" y="30" width="68" height="36" rx="8" fill="url(#gPurple)" opacity="0.9"/><text x="38" y="52" text-anchor="middle" fill="white" font-size="9" font-weight="600">Input</text>
+                            <line x1="72" y1="48" x2="88" y2="48" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrowP)"/>
+                            <rect x="88" y="30" width="68" height="36" rx="8" fill="url(#gPurple)" opacity="0.85"/><text x="122" y="46" text-anchor="middle" fill="white" font-size="8" font-weight="600">Sinc</text><text x="122" y="57" text-anchor="middle" fill="white" font-size="7">Basis</text>
+                            <line x1="156" y1="48" x2="172" y2="48" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrowP)"/>
+                            <rect x="172" y="24" width="72" height="48" rx="8" fill="url(#gPurple)" opacity="0.8"/><text x="208" y="44" text-anchor="middle" fill="white" font-size="8" font-weight="600">Scalar+Vec</text><text x="208" y="55" text-anchor="middle" fill="white" font-size="7">Interaction</text>
+                            <line x1="244" y1="48" x2="260" y2="48" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrowP)"/>
+                            <rect x="260" y="24" width="72" height="48" rx="8" fill="url(#gPurple)" opacity="0.75"/><text x="296" y="44" text-anchor="middle" fill="white" font-size="8" font-weight="600">AdaLayer</text><text x="296" y="55" text-anchor="middle" fill="white" font-size="7">Norm</text>
+                            <text x="296" y="90" text-anchor="middle" fill="#64748b" font-size="8">50-step ODE</text>
+                            <rect x="4" y="110" width="370" height="28" rx="6" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.5"/>
+                            <text x="189" y="128" text-anchor="middle" fill="#7c3aed" font-size="9" font-weight="600">Angular-aware: scalar + vector channels</text>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Diffusion Process -->
+                <div class="algo-chart-card" style="margin-bottom:1.25rem;">
+                    <h4>Diffusion / Generation Process</h4>
+                    <svg viewBox="0 0 760 140" xmlns="http://www.w3.org/2000/svg" style="font-family:Inter,sans-serif;">
+                        <defs>
+                            <linearGradient id="gFwd" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#ef4444"/></linearGradient>
+                            <linearGradient id="gRev" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ef4444"/><stop offset="100%" stop-color="#10b981"/></linearGradient>
+                        </defs>
+                        <text x="10" y="20" fill="#64748b" font-size="10" font-weight="600">Forward (noising)</text>
+                        <rect x="10" y="28" width="740" height="8" rx="4" fill="url(#gFwd)" opacity="0.3"/>
+                        <circle cx="30" cy="32" r="10" fill="#10b981" opacity="0.8"/><text x="30" y="55" text-anchor="middle" fill="#64748b" font-size="8">Clean</text>
+                        <circle cx="200" cy="32" r="10" fill="#f59e0b" opacity="0.6"/><text x="200" y="55" text-anchor="middle" fill="#64748b" font-size="8">Noisy</text>
+                        <circle cx="550" cy="32" r="10" fill="#ef4444" opacity="0.5"/><text x="550" y="55" text-anchor="middle" fill="#64748b" font-size="8">More noise</text>
+                        <circle cx="730" cy="32" r="10" fill="#ef4444" opacity="0.8"/><text x="730" y="55" text-anchor="middle" fill="#64748b" font-size="8">Pure noise</text>
+                        <text x="380" y="30" text-anchor="middle" fill="#64748b" font-size="9">t = 0 &rarr; T</text>
+
+                        <text x="10" y="85" fill="#64748b" font-size="10" font-weight="600">Reverse (denoising)</text>
+                        <rect x="10" y="93" width="740" height="8" rx="4" fill="url(#gRev)" opacity="0.3"/>
+                        <circle cx="30" cy="97" r="10" fill="#ef4444" opacity="0.8"/><text x="30" y="120" text-anchor="middle" fill="#64748b" font-size="8">Noise</text>
+                        <circle cx="200" cy="97" r="10" fill="#f59e0b" opacity="0.6"/><text x="200" y="120" text-anchor="middle" fill="#64748b" font-size="8">Denoising</text>
+                        <circle cx="550" cy="97" r="10" fill="#10b981" opacity="0.5"/><text x="550" y="120" text-anchor="middle" fill="#64748b" font-size="8">Cleaner</text>
+                        <circle cx="730" cy="97" r="10" fill="#10b981" opacity="0.8"/><text x="730" y="120" text-anchor="middle" fill="#64748b" font-size="8">Generated</text>
+                        <text x="380" y="95" text-anchor="middle" fill="#64748b" font-size="9">T &rarr; 0</text>
+                    </svg>
+                </div>
+
+                <!-- Chart 3: Active Learning Pipeline -->
+                <div class="algo-chart-card" style="margin-bottom:1.25rem;">
+                    <h4>Active Learning Pipeline</h4>
+                    <svg viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg" style="font-family:Inter,sans-serif;">
+                        <defs>
+                            <linearGradient id="gCycle" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient>
+                            <marker id="arrowC" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#2563eb"/></marker>
+                        </defs>
+                        <!-- Nodes -->
+                        <rect x="20" y="70" width="100" height="40" rx="8" fill="url(#gCycle)" opacity="0.9"/><text x="70" y="94" text-anchor="middle" fill="white" font-size="9" font-weight="600">Generate</text>
+                        <line x1="120" y1="90" x2="140" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowC)"/>
+                        <rect x="140" y="70" width="100" height="40" rx="8" fill="url(#gCycle)" opacity="0.85"/><text x="190" y="94" text-anchor="middle" fill="white" font-size="9" font-weight="600">Build Interface</text>
+                        <line x1="240" y1="90" x2="260" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowC)"/>
+                        <rect x="260" y="70" width="100" height="40" rx="8" fill="url(#gCycle)" opacity="0.8"/><text x="310" y="94" text-anchor="middle" fill="white" font-size="9" font-weight="600">DFT Prep</text>
+                        <line x1="360" y1="90" x2="380" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowC)"/>
+                        <rect x="380" y="70" width="100" height="40" rx="8" fill="url(#gCycle)" opacity="0.75"/><text x="430" y="88" text-anchor="middle" fill="white" font-size="9" font-weight="600">HPC</text><text x="430" y="100" text-anchor="middle" fill="white" font-size="8">/DFT</text>
+                        <line x1="480" y1="90" x2="500" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowC)"/>
+                        <rect x="500" y="70" width="100" height="40" rx="8" fill="url(#gCycle)" opacity="0.7"/><text x="550" y="94" text-anchor="middle" fill="white" font-size="9" font-weight="600">Parse Results</text>
+                        <line x1="600" y1="90" x2="620" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrowC)"/>
+                        <rect x="620" y="70" width="100" height="40" rx="8" fill="url(#gCycle)" opacity="0.65"/><text x="670" y="94" text-anchor="middle" fill="white" font-size="9" font-weight="600">Retrain</text>
+                        <!-- Loop arrow -->
+                        <path d="M670 110 C670 160, 70 160, 70 110" fill="none" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#arrowC)"/>
+                        <text x="370" y="155" text-anchor="middle" fill="#06b6d4" font-size="9" font-weight="600">Active Learning Loop</text>
+                    </svg>
+                </div>
+
+                <!-- Chart 4: Interface Building -->
+                <div class="algo-chart-card" style="margin-bottom:1.5rem;">
+                    <h4>Interface Building Detail</h4>
+                    <svg viewBox="0 0 760 80" xmlns="http://www.w3.org/2000/svg" style="font-family:Inter,sans-serif;">
+                        <defs>
+                            <linearGradient id="gBld" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient>
+                            <marker id="arrowD" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#2563eb"/></marker>
+                        </defs>
+                        <rect x="5" y="20" width="85" height="32" rx="6" fill="url(#gBld)" opacity="0.9"/><text x="47" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">Bulk CIF</text>
+                        <line x1="90" y1="36" x2="105" y2="36" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrowD)"/>
+                        <rect x="105" y="20" width="85" height="32" rx="6" fill="url(#gBld)" opacity="0.85"/><text x="147" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">Cut Slab</text>
+                        <line x1="190" y1="36" x2="205" y2="36" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrowD)"/>
+                        <rect x="205" y="20" width="95" height="32" rx="6" fill="url(#gBld)" opacity="0.8"/><text x="252" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">Auto Supercell</text>
+                        <line x1="300" y1="36" x2="315" y2="36" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrowD)"/>
+                        <rect x="315" y="20" width="100" height="32" rx="6" fill="url(#gBld)" opacity="0.75"/><text x="365" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">Place Adsorbate</text>
+                        <line x1="415" y1="36" x2="430" y2="36" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrowD)"/>
+                        <rect x="430" y="20" width="72" height="32" rx="6" fill="url(#gBld)" opacity="0.7"/><text x="466" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">Stack</text>
+                        <line x1="502" y1="36" x2="517" y2="36" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrowD)"/>
+                        <rect x="517" y="20" width="85" height="32" rx="6" fill="url(#gBld)" opacity="0.65"/><text x="559" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">Fix Layers</text>
+                        <line x1="602" y1="36" x2="617" y2="36" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrowD)"/>
+                        <rect x="617" y="20" width="80" height="32" rx="6" fill="url(#gBld)" opacity="0.6"/><text x="657" y="40" text-anchor="middle" fill="white" font-size="8" font-weight="600">POSCAR</text>
+                    </svg>
+                </div>
+
+                <!-- Key Equations -->
+                <div class="algo-section">
+                    <h3>Key Equations</h3>
+
+                    <div class="equation-card">
+                        <h5>EGNN Coordinate Update</h5>
+                        <p>$$\Delta x_i = \sum_j \alpha_{ij}(x_i - x_j), \quad \alpha_{ij} = \tanh(\text{MLP}(m_{ij})) \cdot e^{-d^2/2}$$</p>
+                    </div>
+
+                    <div class="equation-card">
+                        <h5>PaiNN Scalar-Vector Interaction</h5>
+                        <p>$$\Delta s = a_{ss} + a_{sv} \cdot \langle U_v, V_v \rangle$$</p>
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">Inner product encodes bond angles between vector channels.</p>
+                    </div>
+
+                    <div class="equation-card">
+                        <h5>DDPM Forward Process</h5>
+                        <p>$$q(x_t|x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\, x_0,\; (1-\bar\alpha_t)I\right)$$</p>
+                    </div>
+
+                    <div class="equation-card">
+                        <h5>Flow Matching</h5>
+                        <p>$$x_t = (1-t)x_0 + t\xi, \quad v = \xi - x_0$$</p>
+                    </div>
+
+                    <div class="equation-card">
+                        <h5>Time-Weighted Physics Loss</h5>
+                        <p>$$\mathcal{L} = \sum_i \lambda_i \cdot w(t) \cdot \mathcal{L}_i, \quad w(t) = \sigma(-15(t/T - 0.4))$$</p>
+                    </div>
+
+                    <a href="/docs#algorithm-overview" class="algo-link">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="width:14px;height:14px"><path d="M6 3h7v7M13 3L5 11"/></svg>
+                        Full mathematical details on the Docs page
+                    </a>
+                </div>
+            </div>
+        </section>
+
     </main>
+</div>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <p>InterfaceML v1.0.0 | Heterojunction Modeling Platform</p>
-            <p class="footer-note">
-                Developed for DFT calculations | Open Source under MIT License
-            </p>
-        </div>
-    </footer>
+<!-- Toast Container -->
+<div id="toast-container"></div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-</body>
-</html>
+<!-- Mobile Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

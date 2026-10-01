@@ -9,19 +9,21 @@ This module provides helper functions for:
 
 from interfaceml.utils.geometry import (
     angle_between,
-    normalize_vector,
     compute_distance,
+    normalize_vector,
 )
 
 # Optional utilities (may not be available in all environments)
 try:
-    from interfaceml.utils import performance
+    from interfaceml.utils import performance as performance
+
     PERFORMANCE_AVAILABLE = True
 except ImportError:
     PERFORMANCE_AVAILABLE = False
 
 try:
-    from interfaceml.utils import validation
+    from interfaceml.utils import validation as validation
+
     VALIDATION_AVAILABLE = True
 except ImportError:
     VALIDATION_AVAILABLE = False
@@ -37,4 +39,3 @@ if PERFORMANCE_AVAILABLE:
 
 if VALIDATION_AVAILABLE:
     __all__.extend(["validation"])
-

@@ -1,0 +1,114 @@
+# ============================================================================
+# Perovskite E3Gen — Configuration v1
+# ============================================================================
+# Joint generation of atom types, fractional coordinates, and lattice
+# parameters for perovskite crystals using Flow Matching with PaiNN backbone.
+#
+# Inspired by DiffCSP / CDVAE / FlowMM, adapted to InterfaceML patterns.
+# ============================================================================
+
+# Data paths (relative to project root)
+data:
+  mp_cif_dir: "../dataset/perovskite/mp_perovskite_cifs"
+  hoip_cif_dir: "../dataset/perovskite/cif_merge"
+  max_atoms: 60         # Max atoms per unit cell
+  cutoff: 5.0           # Radius cutoff in Angstrom for graph construction
+
+  # Train/val/test split ratios
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+
+  # Data loading
+  num_workers: 0        # 0 = avoid multiprocessing issues on macOS
+
+  # Lattice parameter normalization (z-score, computed from dataset)
+  normalize_lattice: true
+
+# Model architecture (Periodic PaiNN)
+model:
+  architecture: painn
+  hidden_dim: 128
+  num_layers: 6
+  num_rbf: 20
+  cutoff: 5.0
+
+  # Element vocabulary
+  num_elements: 100       # Covers most periodic table elements
+  element_embed_dim: 64
+
+  # Composition conditioning
+  composition_embed_dim: 128
+
+  # Time embedding
+  time_embed_dim: 128
+
+  # Output heads
+  # 1. Coord head: per-atom [N, 3] velocity in fractional space
+  # 2. Lattice head: global pooling -> MLP -> [6] lattice velocity
+  # 3. Type head: per-atom [N, num_elements] logits
+
+# Diffusion / flow matching
+diffusion:
+  type: flow_matching
+  sampling_steps: 50
+  coord_noise_type: wrapped_normal   # Respect torus geometry for frac coords
+  lattice_noise_scale: 1.0
+  sigma_min: 1.0e-4                  # Numerical stability
+
+# Training
+training:
+  epochs: 300
+  batch_size: 16
+  learning_rate: 5.0e-4
+  weight_decay: 0.01
+  ema_decay: 0.9999
+  warmup_epochs: 10
+  grad_clip: 1.0
+  nan_guard: true
+
+  # Optimizer
+  optimizer: AdamW
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+  # Evaluation during training
+  eval_interval: 25
+  save_interval: 50
+  struct_eval_interval: 50
+  struct_eval_samples: 5
+
+  # Logging
+  log_interval: 10
+
+# Loss configuration
+loss:
+  # Primary flow matching losses
+  lambda_coord: 1.0        # Fractional coordinate velocity MSE
+  lambda_lattice: 1.0      # Lattice parameter velocity MSE
+  lambda_type: 0.5         # Atom type cross-entropy
+
+  # Physics losses (time-conditioned, active at low noise only)
+  lambda_bond_valence: 0.1  # Bond valence sum penalty
+  lambda_min_dist: 0.05     # Minimum distance penalty
+  lambda_lattice_reg: 0.02  # Lattice regularity penalty
+  lambda_tolerance: 0.0     # Goldschmidt tolerance (disabled by default)
+
+  # Time conditioning for physics losses
+  time_condition_center: 0.3   # Sigmoid center (fraction of t)
+  time_condition_steepness: 15 # Sigmoid steepness
+
+# Evaluation
+evaluation:
+  num_samples: 100
+  metrics:
+    - validity
+    - composition_match
+    - lattice_rmsd
+    - bond_valence_mismatch
+    - min_distance
+    - tolerance_factor
+
+# Hardware
+device: auto    # auto-detect: cuda > mps > cpu
+seed: 42

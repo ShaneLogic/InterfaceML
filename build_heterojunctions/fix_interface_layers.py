@@ -17,12 +17,12 @@ Requirements: pymatgen, numpy
 """
 
 import argparse
-import re
-from pathlib import Path
-
+import logging
 import numpy as np
-from pymatgen.core import Lattice, Structure
+from pymatgen.core import Structure
 from pymatgen.io.vasp import Poscar
+
+logger = logging.getLogger(__name__)
 
 # Shared utilities (engineering refactor):
 # - Keep the CLI behavior unchanged
@@ -53,62 +53,6 @@ except ImportError:
     )
 
 
-_TV_RE = re.compile(
-    r"Tv_1:\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tv_2:\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tv_3:\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)"
-)
-
-
-def _read_cp2k_xyz_last_frame(path: Path) -> tuple[list[str], np.ndarray, np.ndarray | None]:
-    """
-    Read the last frame of a CP2K-style XYZ file.
-
-    Expected format:
-      <natoms>
-      Tv_1: ax ay az Tv_2: bx by bz Tv_3: cx cy cz   (optional but recommended)
-      Elem x y z
-      ...
-    """
-    lines = path.read_text(errors="replace").splitlines()
-    if len(lines) < 3:
-        raise ValueError(f"XYZ file too short: {path}")
-
-    i = 0
-    last_block: tuple[int, int] | None = None
-    last_cell: np.ndarray | None = None
-    while i < len(lines):
-        if not lines[i].strip():
-            i += 1
-            continue
-        try:
-            nat = int(lines[i].strip().split()[0])
-        except Exception:
-            break
-        if i + 1 + nat >= len(lines):
-            break
-        comment = lines[i + 1].strip()
-        m = _TV_RE.search(comment)
-        if m:
-            vals = [float(x) for x in m.groups()]
-            last_cell = np.array(vals, dtype=float).reshape(3, 3)
-        last_block = (i, i + 2 + nat)
-        i = i + 2 + nat
-
-    if last_block is None:
-        raise ValueError(f"Could not parse any XYZ frame from: {path}")
-
-    start, _end = last_block
-    nat = int(lines[start].strip().split()[0])
-    symbols: list[str] = []
-    coords: list[list[float]] = []
-    for ln in lines[start + 2 : start + 2 + nat]:
-        parts = ln.split()
-        if len(parts) < 4:
-            continue
-        symbols.append(parts[0])
-        coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    if len(symbols) != nat:
-        raise ValueError(f"Expected {nat} atoms but parsed {len(symbols)} atoms from: {path}")
-    return symbols, np.array(coords, dtype=float), last_cell
 
 
 def load_structure_any(path_str: str) -> Structure:
@@ -122,64 +66,6 @@ def load_structure_any(path_str: str) -> Structure:
     return _load_structure_any(path_str)
 
 
-def _element_symbols(structure: Structure) -> list[str]:
-    """Return plain element symbols for each site."""
-    return [str(sp) for sp in structure.species]
-
-
-def _connected_components_by_distance(
-    structure: Structure,
-    indices: np.ndarray,
-    *,
-    cutoffs: dict[tuple[str, str], float],
-) -> list[list[int]]:
-    """
-    Find connected components for a subset of atoms using simple distance cutoffs.
-
-    This is used to keep organic molecules intact when selecting fixed atoms:
-    if any atom of a molecule is selected, include the whole molecule.
-    """
-    if indices.size == 0:
-        return []
-
-    idx_list = [int(i) for i in indices.tolist()]
-    coords = np.asarray(structure.cart_coords, dtype=float)
-    syms = _element_symbols(structure)
-    n = len(idx_list)
-
-    # Adjacency on the local index space.
-    adj: list[list[int]] = [[] for _ in range(n)]
-    for a in range(n):
-        ia = idx_list[a]
-        sa = syms[ia]
-        pa = coords[ia]
-        for b in range(a + 1, n):
-            ib = idx_list[b]
-            sb = syms[ib]
-            dmax = cutoffs.get((sa, sb)) or cutoffs.get((sb, sa))
-            if dmax is None:
-                continue
-            if float(np.linalg.norm(pa - coords[ib])) <= float(dmax):
-                adj[a].append(b)
-                adj[b].append(a)
-
-    seen = [False] * n
-    comps: list[list[int]] = []
-    for start in range(n):
-        if seen[start]:
-            continue
-        stack = [start]
-        seen[start] = True
-        comp_local: list[int] = []
-        while stack:
-            u = stack.pop()
-            comp_local.append(u)
-            for v in adj[u]:
-                if not seen[v]:
-                    seen[v] = True
-                    stack.append(v)
-        comps.append([idx_list[i] for i in comp_local])
-    return comps
 
 
 def _include_whole_molecules(
@@ -317,14 +203,14 @@ def print_fixed_atoms_by_z_layers(
             molecule_elements = {"C", "N", "H"}
         fixed = _include_whole_molecules(structure, fixed, molecule_elements=set(molecule_elements))
     if debug:
-        print(f"Detected {len(layers)} layers | tol_used={tol_used:.3f} Å")
+        logger.info("Detected %d layers | tol_used=%.3f \u00c5", len(layers), tol_used)
         for k, layer in enumerate(layers[: min(10, len(layers))], start=1):
             zs = structure.cart_coords[np.array(layer, dtype=int), 2]
-            print(f" - Layer {k}: {len(layer)} atoms | z_range=[{zs.min():.3f}, {zs.max():.3f}]")
+            logger.info(" - Layer %d: %d atoms | z_range=[%.3f, %.3f]", k, len(layer), zs.min(), zs.max())
         if len(layers) > 10:
-            print(" - ... (more layers omitted)")
+            logger.info(" - ... (more layers omitted)")
 
-    print("FIXED_ATOMS LIST:", layer_indices_to_string(fixed, one_based=one_based_output))
+    logger.info("FIXED_ATOMS LIST: %s", layer_indices_to_string(fixed, one_based=one_based_output))
     return fixed
 
 def identify_interface_z(structure, method='density_gap'):
@@ -448,27 +334,27 @@ def add_selective_dynamics(poscar_file, output_file, n_layers_per_side=1,
         layer_thickness: Thickness threshold for defining a layer (Angstroms)
         interface_method: Method to identify interface ('density_gap', 'median', or 'max_gap')
     """
-    print(f"Reading POSCAR file: {poscar_file}")
+    logger.info("Reading POSCAR file: %s", poscar_file)
     structure = load_structure_any(poscar_file)
     
-    print(f"Structure contains {len(structure)} atoms")
-    print(f"Lattice parameters: {structure.lattice.abc}")
+    logger.info("Structure contains %d atoms", len(structure))
+    logger.info("Lattice parameters: %s", structure.lattice.abc)
     
     # Identify interface position
     interface_z = identify_interface_z(structure, method=interface_method)
-    print(f"Identified interface at z = {interface_z:.4f} Å")
+    logger.info("Identified interface at z = %.4f Å", interface_z)
     
     # Find z-coordinate range
     z_coords = structure.cart_coords[:, 2]
     z_min, z_max = z_coords.min(), z_coords.max()
-    print(f"Z-coordinate range: {z_min:.4f} - {z_max:.4f} Å")
+    logger.info("Z-coordinate range: %.4f - %.4f Å", z_min, z_max)
     
     # Find interface layers to relax
     relaxed_indices = find_interface_layers(structure, interface_z, 
                                            n_layers_per_side=n_layers_per_side,
                                            layer_thickness=layer_thickness)
     
-    print(f"Found {len(relaxed_indices)} atoms in interface layers to relax")
+    logger.info("Found %d atoms in interface layers to relax", len(relaxed_indices))
     
     # Create Selective Dynamics flags
     # T T T = free (relax), F F F = fixed
@@ -486,14 +372,14 @@ def add_selective_dynamics(poscar_file, output_file, n_layers_per_side=1,
     poscar = Poscar(structure)
     poscar.write_file(output_file)
     
-    print(f"✓ Written POSCAR with Selective Dynamics to: {output_file}")
-    print(f"  Relaxed atoms: {len(relaxed_indices)} (interface layers)")
-    print(f"  Fixed atoms: {len(structure) - len(relaxed_indices)} (all other layers)")
+    logger.info("Written POSCAR with Selective Dynamics to: %s", output_file)
+    logger.info("  Relaxed atoms: %d (interface layers)", len(relaxed_indices))
+    logger.info("  Fixed atoms: %d (all other layers)", len(structure) - len(relaxed_indices))
     
     # Print some statistics
     relaxed_z_coords = [z_coords[i] for i in relaxed_indices]
     if len(relaxed_z_coords) > 0:
-        print(f"  Relaxed layer z-range: {min(relaxed_z_coords):.4f} - {max(relaxed_z_coords):.4f} Å")
+        logger.info("  Relaxed layer z-range: %.4f - %.4f \u00c5", min(relaxed_z_coords), max(relaxed_z_coords))
 
 
 def add_selective_dynamics_by_layers(
@@ -518,17 +404,17 @@ def add_selective_dynamics_by_layers(
     fixed_layers
         Layer numbers to fix. Uses 1-based layer numbering in the CLI (Layer 1 = bottom layer).
     """
-    print(f"Reading POSCAR file: {poscar_file}")
+    logger.info("Reading POSCAR file: %s", poscar_file)
     structure = load_structure_any(poscar_file)
-    print(f"Structure contains {len(structure)} atoms")
+    logger.info("Structure contains %d atoms", len(structure))
 
     groups = split_stack_layers(structure, n_interfaces=n_interfaces, min_gap=min_gap)
     if len(groups) < 2:
         raise ValueError("Failed to split into multiple layers. Try lowering --min_gap or check the structure.")
 
-    print(f"Detected {len(groups)} layers for n_interfaces={n_interfaces} (expected {n_interfaces + 1})")
+    logger.info("Detected %d layers for n_interfaces=%d (expected %d)", len(groups), n_interfaces, n_interfaces + 1)
     for k, idxs in enumerate(groups, start=1):
-        print(f" - Layer {k}: {len(idxs)} atoms")
+        logger.info(" - Layer %d: %d atoms", k, len(idxs))
 
     # Convert fixed layer numbers to a set of indices.
     fixed_layer_set = set(int(x) for x in fixed_layers)
@@ -536,8 +422,8 @@ def add_selective_dynamics_by_layers(
         raise ValueError(f"fixed_layers must be between 1 and {len(groups)}")
 
     fixed_indices = sorted({i for k, idxs in enumerate(groups, start=1) if k in fixed_layer_set for i in idxs})
-    print(f"Fixed atom count: {len(fixed_indices)}")
-    print("FIXED_ATOMS LIST:", layer_indices_to_string(fixed_indices, one_based=one_based_output))
+    logger.info("Fixed atom count: %d", len(fixed_indices))
+    logger.info("FIXED_ATOMS LIST: %s", layer_indices_to_string(fixed_indices, one_based=one_based_output))
 
     if print_only:
         return
@@ -552,7 +438,7 @@ def add_selective_dynamics_by_layers(
             sel.append([True, True, True])
     structure.add_site_property("selective_dynamics", sel)
     Poscar(structure).write_file(output_file)
-    print(f"✓ Written POSCAR with Selective Dynamics to: {output_file}")
+    logger.info("Written POSCAR with Selective Dynamics to: %s", output_file)
 
 
 def main():
@@ -700,15 +586,15 @@ def main():
                 print_only=bool(args.print_only),
             )
         else:
-        add_selective_dynamics(
-            args.input_file,
-            args.output_file,
-            n_layers_per_side=args.n_layers,
-            layer_thickness=args.layer_thickness,
-            interface_method=args.interface_method
-        )
+            add_selective_dynamics(
+                args.input_file,
+                args.output_file,
+                n_layers_per_side=args.n_layers,
+                layer_thickness=args.layer_thickness,
+                interface_method=args.interface_method
+            )
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Error: %s", e)
         import traceback
         traceback.print_exc()
         return 1
@@ -717,5 +603,9 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     exit(main())
-

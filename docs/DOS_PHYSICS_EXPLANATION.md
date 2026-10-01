@@ -52,8 +52,8 @@ $$g(E) = \sum_n \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(E-\epsilon_n)^2}{2
     -0.84330575         0.0054         8.0000
     -0.83330575         0.0041         6.0000
     ...
-    -0.01330575         0.0041         5.9997   ← Near Fermi level
-     0.00669425         0.0054         0.0000   ← Above Fermi level
+    -0.01330575         0.0041         5.9997   <- Near Fermi level
+     0.00669425         0.0054         0.0000   <- Above Fermi level
      0.01669425         0.0082         0.0000
 ```
 
@@ -97,7 +97,7 @@ $$g(E) = \sum_n \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(E-\epsilon_n)^2}{2
 
 When plotting TDOS vs PDOS, we observed:
 
-1. **TDOS was much smaller than PDOS** (by ~5000×)
+1. **TDOS was much smaller than PDOS** (by ~5000x)
 2. **TDOS was zero for E > E_F** (unoccupied region)
 
 ### 3.2 Root Cause Analysis
@@ -108,12 +108,12 @@ The `Density` column in CP2K's TDOS file is **not in physical units**. Let's ver
 At E = -0.133 a.u. (peak region):
 - Density = 0.0312
 - Occupation = 46 electrons
-- ΔE = 0.01 a.u. = 0.272 eV
+- Delta E = 0.01 a.u. = 0.272 eV
 
-Expected DOS = Occupation / ΔE = 46 / 0.272 = 169 states/eV
+Expected DOS = Occupation / Delta E = 46 / 0.272 = 169 states/eV
 Actual Density = 0.0312
 
-Ratio = 169 / 0.0312 = 5418× !!
+Ratio = 169 / 0.0312 = 5418x !!
 ```
 
 The `Density` column has some arbitrary normalization, making direct comparison impossible.
@@ -154,7 +154,7 @@ The PDOS file provides **discrete molecular orbital data**, not binned densities
 |----------|-----------|-----------|
 | Data type | Energy bins | Discrete MOs |
 | Key quantity | Occupation (electron count) | Projection weights |
-| Unoccupied states | Occupation = 0 | Weights ≠ 0 |
+| Unoccupied states | Occupation = 0 | Weights != 0 |
 
 ### 4.2 PDOS Calculation
 
@@ -202,14 +202,14 @@ When we plot TDOS + PDOS together:
 
 ```
               TDOS (black)
-               ↓
+               down
      |    ___/\___
      |   /        \
 DOS  |  /   ___    \___/\
      | /   /   \        
      |/___/     \__PDOS (colored)
-     +------------------→ Energy
-           E_F ↑
+     +-------------------> Energy
+           E_F up
 ```
 
 - **TDOS** = Total available states (should be higher than individual PDOS)

@@ -2,39 +2,39 @@
 
 <div align="center">
 
-⚛️ **Professional Heterojunction Modeling Platform**
+**Professional Heterojunction Modeling Platform**
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Pymatgen](https://img.shields.io/badge/Powered%20by-Pymatgen-orange)](https://pymatgen.org/)
 
 *A comprehensive toolkit for building, analyzing, and optimizing heterostructure interfaces for DFT calculations*
 
-[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Web Interface](#web-interface)
+[Features](#features) | [Installation](#installation) | [Quick Start](#quick-start) | [Documentation](#documentation) | [Web Interface](#web-interface)
 
 </div>
 
 ---
 
-## 🌟 Features
+## Features
 
 InterfaceML provides a complete suite of tools for heterojunction modeling with a focus on:
 
-### 🔬 **Adsorbate Modeling**
+### Adsorbate Modeling
 - Build perovskite/fullerene interfaces for solar cell applications
 - Automatic surface termination selection (PbI, FAI, MAI, AI)
 - Multi-layer stacking (e.g., Perovskite/C70/C60)
 - Intelligent supercell generation with minimal adsorbate interactions
 - Support for symmetric slabs with consistent terminations
 
-### ⚡ **Interface Builder**
+### Interface Builder
 - Coherent interface matching with automatic strain optimization
 - ZSL algorithm for finding commensurate supercells
 - Bidirectional or unidirectional strain application
 - Customizable Miller indices for both materials
 - Comprehensive strain analysis and reporting
 
-### 📐 **Layer Management**
+### Layer Management
 - **Selective Dynamics**: Fix bottom N layers for relaxation calculations
 - **Layer Splitting**: Separate multi-layer stacks into individual files
 - Automatic layer detection for interface structures
@@ -43,17 +43,20 @@ InterfaceML provides a complete suite of tools for heterojunction modeling with 
 - Preserves original lattice parameters when splitting
 - Compatible with VASP and CP2K
 
-### 📊 **Density Analysis**
-- Compute charge density differences: Δρ = ρ(interface) - ρ(A) - ρ(B)
+### Density Analysis
+- Compute charge density differences: Delta rho = rho(interface) - rho(A) - rho(B)
 - Streaming cube file processing (memory-efficient)
 - Direct VESTA visualization support
 
 ---
 
-## 📦 Installation
+## Installation
+
+For an ARM64 CPU environment with the web application and JupyterLab, see
+[Research Containers](docs/DOCKER_RESEARCH.md).
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.9 or higher
 - pip or conda package manager
 
 ### Install from source
@@ -71,14 +74,14 @@ pip install -r requirements.txt
 ```
 
 ### Core Dependencies
-- `numpy >= 1.20.0`
+- `numpy >= 1.22.0`
 - `pymatgen >= 2022.0.0`
 - `flask >= 2.0.0` (for web interface)
 - `flask-cors >= 3.0.0` (for web interface)
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Command-Line Interface
 
@@ -186,9 +189,9 @@ io.write_poscar(structure, "output_fixed.vasp", selective_dynamics=selective_dyn
 
 ---
 
-## 🌐 Web Interface
+## Web Interface
 
-InterfaceML includes a beautiful, modern web interface for interactive modeling:
+InterfaceML includes a web interface for interactive modeling:
 
 ```bash
 # Start the web server
@@ -198,66 +201,126 @@ python -m interfaceml.web.app
 interfaceml-web
 ```
 
-Then open your browser to http://localhost:5000
+### AI Interface Generation (EGNN + Local GNN)
 
-### Web Features:
-- 📁 **Drag-and-drop file upload** for structure files (.cif, .vasp, .xyz)
-- 🎨 **Interactive parameter configuration** with real-time validation
-- 📊 **Visual feedback** with structure information display
-- ⬇️ **Direct download** of generated structure files
-- 🔄 **Multi-tab interface** for different modeling workflows
-- ✂️ **Layer splitting** - Separate multi-layer structures (preserves lattice)
-- 🔧 **Selective dynamics** - Fix layers for relaxation
+If the fullerene diffusion checkpoint is available, you can generate a
+perovskite/fullerene interface directly through the web API:
+
+#### AI Setup (Required for the AI tab)
+
+The AI module depends on PyTorch + PyTorch Geometric and is not installed
+with the default `requirements.txt`. Recommended Python: 3.10 or 3.11.
+
+```bash
+# Option A: install optional AI dependencies
+pip install -e ".[ai]"
+
+# Option B: install fullerene module requirements directly
+pip install -r requirements.txt
+pip install -r fullerene_e3gen/requirements.txt
+```
+
+If PyTorch/PyG installation fails for your platform, follow their official
+installation guidance for your CUDA/CPU stack.
+
+You can override the AI asset locations with:
+- `INTERFACEML_FULLERENE_PATH`
+- `INTERFACEML_FULLERENE_CHECKPOINT`
+
+To start the web app with a specific Python environment:
+
+```bash
+INTERFACEML_PYTHON=/path/to/python ./start_web.sh
+```
+
+```json
+POST /api/ai/generate-interface
+{
+  "base_filename": "my_base_slab.cif",
+  "num_atoms": 60,
+  "miller": [0, 0, 1],
+  "slab_thickness": 18.0,
+  "vacuum": 20.0,
+  "separation": 3.2,
+  "xy_frac": [0.5, 0.5],
+  "local_refine": true,
+  "refine_scope": "adsorbate"
+}
+```
+
+The response includes a downloadable `POSCAR` (`.vasp`) for the combined interface.
+
+Then open your browser:
+- Documentation homepage: http://localhost:5000/
+- Web app interface: http://localhost:5000/app
+
+### Web Features
+- **Drag-and-drop file upload** for structure files (.cif, .vasp, .xyz)
+- **Interactive parameter configuration** with real-time validation
+- **Visual feedback** with structure information display
+- **Direct download** of generated structure files
+- **Multi-tab interface** for different modeling workflows
+- **Layer splitting** - Separate multi-layer structures (preserves lattice)
+- **Selective dynamics** - Fix layers for relaxation
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 ### Directory Structure
 
 ```
 InterfaceML/
-├── interfaceml/              # Main Python package
-│   ├── core/                 # Core functionality modules
-│   │   ├── io.py            # Structure I/O (VASP, CIF, XYZ)
-│   │   ├── layering.py      # Layer detection and manipulation
-│   │   └── splitting.py     # Smart layer splitting
-│   ├── cli/                  # Command-line interface tools
-│   │   ├── build_interface.py
-│   │   ├── fix_layers.py
-│   │   └── delta_density.py
-│   ├── web/                  # Flask web application
-│   │   ├── app.py           # Main Flask app
-│   │   ├── templates/       # HTML templates
-│   │   └── static/          # CSS and JavaScript
-│   └── utils/                # Utility functions
-│       └── geometry.py      # Geometric calculations
-├── build_heterojunctions/    # Original scripts (maintained for compatibility)
-│   ├── interface_builder.py
-│   ├── fix_interface_layers.py
-│   ├── delta_density_cube.py
-│   └── README.md            # Detailed technical documentation
-├── structures/               # Example structure files
-│   ├── perovskites/
-│   ├── etl/
-│   └── heterojunctions/
-├── examples/                 # Tutorial notebooks and scripts
-├── docs/                     # Additional documentation
-├── setup.py                  # Package installation script
-├── requirements.txt          # Python dependencies
-└── README.md                 # This file
+|-- interfaceml/              # Main Python package
+|   |-- core/                 # Core functionality modules
+|   |   |-- io.py            # Structure I/O (VASP, CIF, XYZ)
+|   |   |-- layering.py      # Layer detection and manipulation
+|   |   `-- splitting.py     # Smart layer splitting
+|   |-- cli/                  # Command-line interface tools
+|   |   |-- build_interface.py
+|   |   |-- fix_layers.py
+|   |   `-- delta_density.py
+|   |-- web/                  # Flask web application
+|   |   |-- app.py           # App factory + blueprint registration
+|   |   |-- routes/          # API blueprints (common, interface, dos, ai)
+|   |   |-- ai.py            # AI module discovery/loading
+|   |   |-- core.py          # Core module availability
+|   |   |-- dos.py           # DOS/PDOS helpers
+|   |   |-- utils.py         # Shared web utilities
+|   |   |-- templates/       # HTML templates
+|   |   `-- static/          # CSS and JavaScript
+|   `-- utils/                # Utility functions
+|       `-- geometry.py      # Geometric calculations
+|-- build_heterojunctions/    # Original scripts (maintained for compatibility)
+|   |-- interface_builder.py
+|   |-- fix_interface_layers.py
+|   |-- delta_density_cube.py
+|   `-- README.md            # Detailed technical documentation
+|-- structures/               # Example structure files
+|   |-- perovskites/
+|   |-- etl/
+|   `-- heterojunctions/
+|-- examples/                 # Tutorial notebooks and scripts
+|-- docs/                     # Additional documentation
+|-- setup.py                  # Package installation script
+|-- requirements.txt          # Python dependencies
+`-- README.md                 # This file
 ```
+
+Note: `interfaceml/core` is the canonical API surface. The legacy scripts in `build_heterojunctions/`
+delegate to core utilities when available to keep behavior consistent.
 
 ### Detailed Documentation
 - **[build_heterojunctions/README.md](build_heterojunctions/README.md)** - Comprehensive CLI usage guide
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Tutorial and workflows
 - **[docs/LAYER_SPLITTING.md](docs/LAYER_SPLITTING.md)** - Layer splitting guide
 - **[docs/SMART_SPLITTING_ALGORITHM.md](docs/SMART_SPLITTING_ALGORITHM.md)** - Smart splitting algorithm details
+- **[docs/MATHEMATICAL_OVERVIEW.md](docs/MATHEMATICAL_OVERVIEW.md)** - Mathematical and algorithmic overview
 - **[Tutorials](examples/)** - Example workflows
 
 ---
 
-## 🎯 Use Cases
+## Use Cases
 
 ### Solar Cell Modeling
 - Perovskite/ETL (C60, TiO2) interfaces
@@ -276,7 +339,7 @@ InterfaceML/
 
 ---
 
-## 🛠️ Advanced Usage
+## Advanced Usage
 
 ### Building from Pre-relaxed Structures
 
@@ -318,7 +381,7 @@ python build_heterojunctions/fix_interface_layers.py \
 
 ---
 
-## 📊 Examples
+## Examples
 
 ### Example 1: FAPbI3/C60 Solar Cell Interface
 
@@ -353,7 +416,7 @@ python build_heterojunctions/delta_density_cube.py \
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
 
@@ -373,13 +436,13 @@ python -c "from interfaceml.core import io, layering, splitting; print('OK')"
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
-## 📧 Contact
+## Contact
 
 For questions, bug reports, or feature requests:
 - Open an issue on [GitHub](https://github.com/yourusername/InterfaceML/issues)
@@ -387,7 +450,7 @@ For questions, bug reports, or feature requests:
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built with [Pymatgen](https://pymatgen.org/) - Materials analysis library
 - Interface matching based on ZSL algorithm
@@ -395,7 +458,7 @@ For questions, bug reports, or feature requests:
 
 ---
 
-## 📖 Citation
+## Citation
 
 If you use InterfaceML in your research, please cite:
 
@@ -412,8 +475,6 @@ If you use InterfaceML in your research, please cite:
 
 <div align="center">
 
-**Made with ❤️ for the computational materials science community**
-
-⭐ Star us on GitHub if InterfaceML helps your research!
+If InterfaceML supports your research, citations are appreciated.
 
 </div>

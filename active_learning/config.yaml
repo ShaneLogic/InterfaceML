@@ -1,0 +1,56 @@
+pipeline:
+  round: 0                        # Current active learning round
+  base_dir: "active_learning_runs"
+  seed: 42
+
+generation:
+  fullerene:
+    checkpoint: "fullerene_e3gen/checkpoints/best_model.pt"
+    C_values: [60, 70, 80]        # Carbon counts to generate
+    num_samples_per_C: 5
+  perovskite:
+    checkpoint: "perovskite_e3gen/checkpoints/best_model.pt"
+    compositions:                  # A/B/X combinations
+      - {A: Ba, B: Ti, X: O}
+      - {A: Cs, B: Pb, X: I}
+      - {A: Cs, B: Pb, X: Br}
+    num_atoms: 5
+    num_samples_per_comp: 5
+
+interface:
+  miller: [0, 0, 1]
+  slab_thickness: 18.0
+  vacuum: 20.0
+  distance: 3.2
+  orientation_samples: 4
+  xy_grid: [2, 2]
+  max_interfaces: 500             # Cap total interfaces per round
+
+dft:
+  code: cp2k
+  basis_set: DZVP-MOLOPT-SR-GTH
+  potential: GTH-PBE
+  functional: PBE
+  cutoff: 400                     # Ry
+  rel_cutoff: 60                  # Ry
+  max_scf: 300
+  geo_opt_max_iter: 200
+  geo_opt_convergence: 3.0e-3     # Ha/Bohr
+  dispersion: DFT-D3              # vdW correction (important for interfaces)
+  fix_bottom_layers: 2
+
+slurm:
+  partition: "gpu"
+  nodes: 1
+  ntasks_per_node: 48
+  time: "24:00:00"
+  account: null                   # Set if needed
+  cp2k_module: "cp2k/2024.1"     # module load command
+  cp2k_binary: "cp2k.psmp"
+
+retraining:
+  energy_filter: -1.0             # Keep structures with binding energy < this (eV)
+  force_threshold: 0.5            # Max force for "converged" (Ha/Bohr)
+  min_structures: 50              # Min structures before retraining
+  retrain_fullerene: false        # Usually not needed
+  retrain_perovskite: true        # Retrain with DFT-relaxed slab geometries

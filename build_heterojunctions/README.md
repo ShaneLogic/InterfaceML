@@ -34,16 +34,32 @@ python build_heterojunctions/fix_interface_layers.py \
   -t 2.0
 ```
 
+## Algorithms
+
+This folder implements interface construction and analysis pipelines. Key algorithms:
+
+1. In-plane commensurate matching using the ZSL search to find integer supercells
+   within length and angle tolerances.
+2. Coherent interface construction from matched slabs with controlled gap and vacuum.
+3. Layer detection for selective dynamics using height projection and gap clustering.
+4. Stack splitting by gap detection for multi-layer structures (legacy mode).
+5. Difference charge density computed as Delta rho = rho_interface - rho_A - rho_B
+   on identical cube grids using streaming IO.
+
+For math details and the composition-aware splitting algorithm, see:
+- `docs/MATHEMATICAL_OVERVIEW.md`
+- `docs/SMART_SPLITTING_ALGORITHM.md`
+
 ## 0) Enlarge a CIF unit cell (add vacuum) (`expand_cif_cell.py`)
 
-This helper script enlarges the **unit cell** to a target size (e.g., \(a=b=c=20\) Å) while keeping the
+This helper script enlarges the **unit cell** to a target size (e.g., \(a=b=c=20\) Angstrom) while keeping the
 **molecular geometry** unchanged. This is useful when you want to add vacuum around an isolated molecule
 (C60/C70, etc.) before building adsorption or interface models.
 
 ### Recommended usage (keep the structure centered)
 
 ```bash
-# Enlarge the cell to 20 Å and keep the molecule centered in the new unit cell.
+# Enlarge the cell to 20 Angstrom and keep the molecule centered in the new unit cell.
 # --wrap keeps fractional coordinates within [0, 1) for nicer visualization.
 python build_heterojunctions/expand_cif_cell.py \
   structures/etl/C60-Ih.cif \
@@ -61,7 +77,7 @@ This will write:
 
 ### Notes
 
-- `--target`: Sets the new cell length (Å). The script sets \(a=b=c=\) target and keeps the original angles.
+- `--target`: Sets the new cell length (Angstrom). The script sets \(a=b=c=\) target and keeps the original angles.
 - `--center`: Translates the structure so its **geometric center** is at the **new cell center**.
 - `--wrap`: Wraps fractional coordinates back to \([0, 1)\) after transforming/translating.
 - If your shell complains about parentheses in paths (e.g. zsh), wrap paths in quotes.
@@ -92,12 +108,12 @@ python build_heterojunctions/interface_builder.py \
 
 ### Common optional arguments
 
-- `--slab_thickness_a`: Slab thickness for A in Å (default: 20.0)
-- `--slab_thickness_b`: Slab thickness for B in Å (default: 12.0)
-- `--vacuum`: Vacuum size in Å (default: 20.0)
-- `--sep`: Initial separation between surfaces in Å (default: 3.2)
+- `--slab_thickness_a`: Slab thickness for A in Angstrom (default: 20.0)
+- `--slab_thickness_b`: Slab thickness for B in Angstrom (default: 12.0)
+- `--vacuum`: Vacuum size in Angstrom (default: 20.0)
+- `--sep`: Initial separation between surfaces in Angstrom (default: 3.2)
 - `--tol`: Matching strain tolerance (default: 0.03)
-- `--max_area`: Maximum interface area in Å² for searching matches (default: 800.0)
+- `--max_area`: Maximum interface area in Angstrom^2 for searching matches (default: 800.0)
 - `--strain_target`: Which material to strain: `A`, `B`, or `both` (default: `A`)
 - `--use_builder_interface`: Use CoherentInterfaceBuilder method (recommended for ordered interfaces)
 - `--max_atoms`: Maximum number of atoms in final structure (default: 400)
@@ -122,9 +138,9 @@ Plane-wave DFT uses **3D periodic boundary conditions**. That means the C60 mole
 in the in-plane directions (x/y). You control whether this represents:
 
 - a **dense periodic C60 overlayer** (small in-plane cell), or
-- an **isolated C60 adsorption** model (larger in-plane supercell to reduce image–image interactions).
+- an **isolated C60 adsorption** model (larger in-plane supercell to reduce image-image interactions).
 
-Use `--auto_supercell` or `--supercell_xy` to make the in-plane cell larger and avoid unphysical C60–C60
+Use `--auto_supercell` or `--supercell_xy` to make the in-plane cell larger and avoid unphysical C60-C60
 overlap across periodic images.
 
 ### Basic usage (recommended)
@@ -146,7 +162,7 @@ python build_heterojunctions/interface_builder.py \
 ### Multi-adsorbate stack (3 layers / 2 interfaces)
 
 To build a **three-layer** model (perovskite bottom / C70 middle / C60 top) with **two interfaces**
-and a fixed **2 Å gap between neighboring layers**, use `--adsorbates` + `--layer_gaps`:
+and a fixed **2 Angstrom gap between neighboring layers**, use `--adsorbates` + `--layer_gaps`:
 
 ```bash
 python build_heterojunctions/interface_builder.py \
@@ -176,14 +192,14 @@ python build_heterojunctions/interface_builder.py \
   - `AI`: generic A-site organic + I termination (accepts MA and/or FA; recommended for mixed-cation perovskites such as MA0.5FA0.5PbI3)
 - **Default behavior**: the slab is built as a **symmetric slab**, i.e. the **top and bottom surfaces have the same termination** (recommended for slab DFT).
 - `--no_symmetric_slab`: Disable symmetric-slab enforcement (top/bottom terminations may differ). **Not recommended**; only useful for debugging.
-- `--adsorbate_distance`: Target distance (Å) between **top-most slab atom** and the **lowest C atom in C60**
+- `--adsorbate_distance`: Target distance (Angstrom) between **top-most slab atom** and the **lowest C atom in C60**
   along the surface normal
 - `--adsorbates`: Comma-separated adsorbate CIFs for multilayer stacking (bottom->top)
-- `--layer_gaps`: Comma-separated gaps in Å, must match `--adsorbates` length
+- `--layer_gaps`: Comma-separated gaps in Angstrom, must match `--adsorbates` length
 - `--auto_supercell`: Automatically choose a small in-plane supercell to reduce C60 periodic-image interactions
   (heuristic target: `c60_diameter + c60_buffer`)
 - `--supercell_xy nx,ny`: Explicitly set the in-plane supercell (e.g., `2,2` or `3,3`)
-- `--c60_diameter`, `--c60_buffer`: Heuristic controls for `--auto_supercell` (defaults: 7.1 Å and 3.0 Å). For other fullerenes (e.g., C70), set `--c60_diameter` accordingly.
+- `--c60_diameter`, `--c60_buffer`: Heuristic controls for `--auto_supercell` (defaults: 7.1 Angstrom and 3.0 Angstrom). For other fullerenes (e.g., C70), set `--c60_diameter` accordingly.
 - `--adsorbate_xy fx,fy`: Optional lateral placement of the C60 geometric center in fractional coordinates
 
 ### Outputs
@@ -210,7 +226,7 @@ python build_heterojunctions/fix_interface_layers.py \
 - `input_file`: Input POSCAR file (combined heterojunction from Step 1)
 - `-o, --output`: Output POSCAR file (default: input_file with `_relaxed` suffix)
 - `-n, --n_layers`: Number of layers to relax on each side of interface (default: 1)
-- `-t, --thickness`: Layer thickness threshold in Å (default: 2.0)
+- `-t, --thickness`: Layer thickness threshold in Angstrom (default: 2.0)
 - `-m, --method`: Interface identification method: `density_gap`, `median`, or `max_gap` (default: `density_gap`)
 
 ### Mode B: split a stacked heterostructure into layers and fix selected layer(s)
@@ -219,11 +235,11 @@ For stacked models with multiple interfaces (e.g. perovskite/C70/C60), it is oft
 **split the structure into (n_interfaces + 1) layers** and then fix one or more complete layers.
 
 Rule:
-- 1 interface  → 2 layers
-- 2 interfaces → 3 layers
+- 1 interface  -> 2 layers
+- 2 interfaces -> 3 layers
 - ...
 
-Example (2 interfaces → 3 layers; fix the bottom layer):
+Example (2 interfaces -> 3 layers; fix the bottom layer):
 
 ```bash
 python build_heterojunctions/fix_interface_layers.py your_stacked_model.vasp \
@@ -254,7 +270,7 @@ python build_heterojunctions/fix_interface_layers.py structures/heterojunctions/
 ```
 
 Notes:
-- `--tol` is the layer clustering tolerance in Å; if omitted, it is auto-estimated.
+- `--tol` is the layer clustering tolerance in Angstrom; if omitted, it is auto-estimated.
 - For CP2K `.xyz`, include `Tv_1/Tv_2/Tv_3` in the comment line whenever possible.
 - By default, the script ensures **whole organic molecules** (e.g., MA/FA) are not cut by the layer boundary:
   if any atom of a molecule is selected in the fixed region, **all atoms of that molecule** are included.
@@ -317,7 +333,7 @@ For an input file `PROJECT-1.cif`, the script creates:
 
 Compute difference charge density (best for heterojunctions):
 
-- **Formula**: Δρ(r) = ρ_interface − ρ_layerA − ρ_layerB
+- **Formula**: Delta rho(r) = rho_interface - rho_layerA - rho_layerB
 - **Output**: `delta-density.cube` (Gaussian cube format; open directly in **VESTA**)
 
 ### Example (PROJECT-1)
@@ -355,7 +371,7 @@ python build_heterojunctions/stack_slabs_relax.py <slab1_file> <slab2_file> [gap
 
 ### Examples
 
-**Example 1**: Stack two pre-relaxed slabs with 3 Å gap and 20 Å vacuum
+**Example 1**: Stack two pre-relaxed slabs with 3 Angstrom gap and 20 Angstrom vacuum
 
 ```bash
 python build_heterojunctions/stack_slabs_relax.py \
@@ -366,11 +382,11 @@ python build_heterojunctions/stack_slabs_relax.py \
 ```
 
 This will create `relax_slab/fapbi3@tio2_fa_stacked.vasp` with structure:
-- Bottom vacuum (10 Å, half of total 20 Å)
+- Bottom vacuum (10 Angstrom, half of total 20 Angstrom)
 - Slab 1 (fapbi3)
-- Gap (3 Å)
+- Gap (3 Angstrom)
 - Slab 2 (tio2_fa)
-- Top vacuum (10 Å, half of total 20 Å)
+- Top vacuum (10 Angstrom, half of total 20 Angstrom)
 
 **Example 2**: Stack slabs with custom gap and vacuum
 
@@ -427,8 +443,8 @@ The script displays:
 - **Output location**: By default, stacked structures are saved to the `relax_slab/` folder
 - **File naming**: Output files are named as `{slab1}@{slab2}_stacked.vasp` (e.g., `fapbi3@tio2_fa_stacked.vasp`)
 - **Duplicate handling**: If a file with the same name already exists, a number suffix will be added (e.g., `fapbi3@tio2_fa_stacked_1.vasp`)
-- **Vacuum layers**: The structure includes vacuum layers at both bottom and top. The specified vacuum thickness is the total (default: 20 Å), which is split equally between bottom and top (10 Å each) to ensure proper isolation for DFT calculations
-- **Structure layout**: The final structure follows: [bottom vacuum] → [slab1] → [gap] → [slab2] → [top vacuum]
+- **Vacuum layers**: The structure includes vacuum layers at both bottom and top. The specified vacuum thickness is the total (default: 20 Angstrom), which is split equally between bottom and top (10 Angstrom each) to ensure proper isolation for DFT calculations
+- **Structure layout**: The final structure follows: [bottom vacuum] -> [slab1] -> [gap] -> [slab2] -> [top vacuum]
 
 ### Use Cases
 
@@ -443,7 +459,7 @@ This tool is useful when:
 1. **Use `--use_builder_interface`**: Recommended for ordered, high-symmetry interfaces
 2. **Atom count control**: Use `--max_atoms` to limit system size (the script may adjust thickness if needed)
 3. **Selective dynamics**: `-n 2` (2 layers per side) is a good default for many DFT relaxations
-4. **Layer thickness**: Tune `-t` (often 2.0–3.0 Å) based on your material’s layer spacing
+4. **Layer thickness**: Tune `-t` (often 2.0-3.0 Angstrom) based on your material's layer spacing
 5. **Strain target**:
    - `A`: Strain material A to match B (good when A is more flexible)
    - `B`: Strain material B to match A (good when B is more flexible)

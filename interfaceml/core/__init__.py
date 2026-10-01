@@ -10,4 +10,4 @@ This subpackage contains the fundamental building blocks for heterojunction mode
 """
 
 # Only import available modules to avoid circular imports
-__all__ = ["io", "layering"]
+__all__ = ["io", "layering", "adsorbate"]

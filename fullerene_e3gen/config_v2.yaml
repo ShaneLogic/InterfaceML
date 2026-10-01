@@ -1,0 +1,152 @@
+# ============================================================================
+# Fullerene Diffusion Model — Configuration v2 (PaiNN + Flow Matching + CFG)
+# ============================================================================
+# This config trains a PaiNN model with flow matching and classifier-free
+# guidance. It is NOT backward-compatible with EGNN checkpoints.
+#
+# Key improvements over v8 (EGNN + DDPM):
+#   1. PaiNN architecture: angular awareness via scalar+vector features
+#   2. Flow matching: simpler objective, fewer sampling steps (50 vs 200)
+#   3. CFG: stronger C conditioning via classifier-free guidance
+#   4. Angle loss: penalizes non-sp2 bond angles
+#   5. No distance suppression or degree normalization
+#
+# To train:
+#   python train.py --config config_v2.yaml --epochs 500
+#
+# To generate:
+#   python generate.py --checkpoint checkpoints/best_model.pt --C 60 --num_samples 50
+# ============================================================================
+
+# Data paths (same as v8)
+data:
+  xyz_dir: "../dataset/fullerenes/fullerene_xyz"
+  analysis_dir: "../dataset/fullerenes/fullerene_xyz/analysis_20260122"
+  split_csv: "../dataset/fullerenes/fullerene_xyz/analysis_20260122/ml_assets/split.csv"
+  C_min: 20
+  C_max: 720
+  center: true
+  normalize_scale: true
+
+  # Synthetic topology augmentation
+  synthetic_topology:
+    enabled: true
+    apply_to: train
+    C_values: [54, 56, 58, 62, 64, 66, 68, 110, 120, 140, 160, 200]
+    per_C: 5
+    max_tries: 500
+    seed: 20260201
+    refine: true
+
+# Model architecture: PaiNN
+model:
+  architecture: "painn"         # NEW: PaiNN instead of EGNN
+  hidden_dim: 256               # 128->256: larger for PaiNN expressivity
+  num_layers: 8                 # 6->8: deeper message passing
+  num_rbf: 20                   # Radial basis functions for distance encoding
+  cutoff: 5.0                   # Interaction cutoff (Angstroms, normalized space)
+  cfg_drop_prob: 0.1            # NEW: CFG dropout probability during training
+  C_embed_dim: 64               # Carbon count embedding dimension
+  C_fourier_features: 16        # Fourier features for continuous C embedding
+  time_embed_dim: 128           # Timestep embedding dimension
+  max_C: 720                    # Maximum carbon count
+
+  # Phase 3 scaffolding (not yet active)
+  num_atom_types: 1             # 1 = carbon only
+  use_pbc: false                # Periodic boundary conditions (future)
+
+# Diffusion: Flow Matching
+diffusion:
+  type: "flow_matching"         # NEW: replaces DDPM
+  num_steps: 1000               # Used for time embedding scale (t_int = t_cont * 999)
+  sampling_steps: 50            # 200->50: flow matching needs fewer steps
+  cfg_guidance_weight: 2.0      # NEW: CFG weight during inference (>1 amplifies conditioning)
+  beta_schedule: "cosine"       # Still needed for DDPM backward compat / validation
+  beta_start: 0.0001
+  beta_end: 0.02
+
+# Training
+training:
+  epochs: 500
+  batch_size: 16
+  learning_rate: 5.0e-4         # 1e-3->5e-4: PaiNN benefits from lower LR
+  weight_decay: 0.01
+  eval_interval: 25
+  save_interval: 50
+  ema_decay: 0.9999
+  optimizer: "AdamW"
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+# Loss configuration
+loss:
+  noise_weight: 1.0
+
+  # Physics losses (time-conditioned, same as v8)
+  lambda_bond: 0.1
+  target_bond: 1.42
+  bond_tolerance: 0.15
+  lambda_sphere: 0.05
+  sphere_time_conditioned: true
+  lambda_repulsion: 0.02
+  repulsion_min_dist: 1.50
+  lambda_connectivity: 0.05
+  lambda_topology: 0.0
+
+  # NEW: Angle loss for sp2 bond angles
+  lambda_angle: 0.1             # Penalize angles outside [103, 125] degrees
+
+  # Gradient management
+  grad_clip: 1.0
+  nan_guard: true
+
+  # Reconstruction guidance disabled (CFG replaces it)
+  guidance_scale: 0.0
+
+  # Late-stage sampling corrections (lighter with flow matching)
+  sampling_bond_iters: 0        # Disabled: PaiNN should learn correct bonds
+  sampling_bond_strength: 0.0
+  sampling_project_radius: false
+  sampling_rescale_each_step: false
+  sampling_nonbonded_min_dist: 0.3
+
+  # Training schedule
+  warmup_epochs: 10
+  warmup_schedule: "linear"
+
+  # Time sampling: flow matching uses uniform by design
+  low_t_fraction: 0.0           # Uniform t sampling
+
+  # Structural validation during training
+  struct_eval_interval: 50
+  struct_eval_samples: 3
+  struct_eval_C_values: [60, 80]
+
+  log_interval: 10
+
+# Topology GNN (reuse from v8)
+topology_gnn:
+  enabled: true
+  train_before_diffusion: false
+  checkpoint_path: "checkpoints/topology_gnn.pt"
+  max_C: 720
+  hidden_dim: 128
+  latent_dim: 64
+
+# Evaluation
+evaluation:
+  num_samples: 100
+  metrics:
+    - bond_length_mean
+    - bond_length_std
+    - bond_angle_mean
+    - bond_angle_std
+    - rmsd_to_nearest
+    - sphericity
+    - validity
+    - nan_fraction
+
+# Hardware
+device: "cuda"
+num_workers: 0
+seed: 20260201

@@ -1,0 +1,108 @@
+&GLOBAL
+  PROJECT {project_name}
+  RUN_TYPE GEO_OPT
+  PRINT_LEVEL MEDIUM
+&END GLOBAL
+
+&FORCE_EVAL
+  METHOD Quickstep
+
+  &DFT
+    BASIS_SET_FILE_NAME BASIS_MOLOPT
+    POTENTIAL_FILE_NAME POTENTIAL
+
+    &MGRID
+      CUTOFF {cutoff}
+      REL_CUTOFF {rel_cutoff}
+      NGRIDS 5
+    &END MGRID
+
+    &QS
+      METHOD GPW
+      EPS_DEFAULT 1.0E-12
+      EXTRAPOLATION ASPC
+      EXTRAPOLATION_ORDER 3
+    &END QS
+
+    &SCF
+      MAX_SCF {max_scf}
+      EPS_SCF 1.0E-6
+      SCF_GUESS RESTART
+      &OT
+        MINIMIZER DIIS
+        PRECONDITIONER FULL_SINGLE_INVERSE
+        ENERGY_GAP 0.1
+      &END OT
+      &OUTER_SCF
+        MAX_SCF 20
+        EPS_SCF 1.0E-6
+      &END OUTER_SCF
+    &END SCF
+
+    &XC
+      &XC_FUNCTIONAL {functional}
+      &END XC_FUNCTIONAL
+{dispersion_block}
+    &END XC
+
+    &PRINT
+      &E_DENSITY_CUBE OFF
+      &END E_DENSITY_CUBE
+    &END PRINT
+  &END DFT
+
+  &SUBSYS
+    &CELL
+      A {cell_a}
+      B {cell_b}
+      C {cell_c}
+      PERIODIC XYZ
+    &END CELL
+
+    &TOPOLOGY
+      COORD_FILE_NAME structure.xyz
+      COORD_FILE_FORMAT XYZ
+    &END TOPOLOGY
+
+{kind_blocks}
+  &END SUBSYS
+
+  &PRINT
+    &FORCES ON
+    &END FORCES
+  &END PRINT
+&END FORCE_EVAL
+
+&MOTION
+  &GEO_OPT
+    TYPE MINIMIZATION
+    MAX_ITER {geo_opt_max_iter}
+    OPTIMIZER BFGS
+    &BFGS
+      TRUST_RADIUS 0.2
+    &END BFGS
+    MAX_FORCE {geo_opt_convergence}
+  &END GEO_OPT
+
+  &PRINT
+    &TRAJECTORY
+      FORMAT XYZ
+      &EACH
+        GEO_OPT 1
+      &END EACH
+    &END TRAJECTORY
+    &FORCES
+      FORMAT XYZ
+      &EACH
+        GEO_OPT 1
+      &END EACH
+    &END FORCES
+    &RESTART
+      &EACH
+        GEO_OPT 10
+      &END EACH
+    &END RESTART
+  &END PRINT
+
+{constraint_block}
+&END MOTION

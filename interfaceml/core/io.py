@@ -21,7 +21,6 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import numpy as np
 from pymatgen.core import Lattice, Structure
@@ -37,7 +36,7 @@ _TV_PATTERN = re.compile(
 
 def read_cp2k_xyz_last_frame(
     filepath: Path | str,
-) -> Tuple[List[str], np.ndarray, Optional[np.ndarray]]:
+) -> tuple[list[str], np.ndarray, np.ndarray | None]:
     """
     Read the last frame from a CP2K-style XYZ trajectory.
 
@@ -73,8 +72,8 @@ def read_cp2k_xyz_last_frame(
         raise ValueError(f"XYZ file too short (< 3 lines): {path}")
 
     i = 0
-    last_block: Optional[Tuple[int, int]] = None
-    last_cell: Optional[np.ndarray] = None
+    last_block: tuple[int, int] | None = None
+    last_cell: np.ndarray | None = None
 
     # Scan for all frames and keep track of the last one
     while i < len(lines):
@@ -89,7 +88,7 @@ def read_cp2k_xyz_last_frame(
             break
 
         comment_line = lines[i + 1].strip()
-        if (match := _TV_PATTERN.search(comment_line)):
+        if match := _TV_PATTERN.search(comment_line):
             values = [float(x) for x in match.groups()]
             last_cell = np.array(values, dtype=float).reshape(3, 3)
 
@@ -101,8 +100,8 @@ def read_cp2k_xyz_last_frame(
 
     start, _ = last_block
     natoms = int(lines[start].strip().split()[0])
-    symbols: List[str] = []
-    coords: List[List[float]] = []
+    symbols: list[str] = []
+    coords: list[list[float]] = []
 
     for line in lines[start + 2 : start + 2 + natoms]:
         parts = line.split()
@@ -112,9 +111,7 @@ def read_cp2k_xyz_last_frame(
         coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
 
     if len(symbols) != natoms:
-        raise ValueError(
-            f"Expected {natoms} atoms but parsed {len(symbols)} from: {path}"
-        )
+        raise ValueError(f"Expected {natoms} atoms but parsed {len(symbols)} from: {path}")
 
     return symbols, np.array(coords, dtype=float), last_cell
 
@@ -122,7 +119,7 @@ def read_cp2k_xyz_last_frame(
 def load_structure(
     filepath: Path | str,
     *,
-    fallback_box_size: Tuple[float, float, float] = (20.0, 20.0, 30.0),
+    fallback_box_size: tuple[float, float, float] = (20.0, 20.0, 30.0),
     fallback_padding: float = 10.0,
 ) -> Structure:
     """
@@ -190,8 +187,8 @@ def write_poscar(
     structure: Structure,
     filepath: Path | str,
     *,
-    selective_dynamics: Optional[List[Tuple[bool, bool, bool]]] = None,
-    comment: Optional[str] = None,
+    selective_dynamics: list[tuple[bool, bool, bool]] | None = None,
+    comment: str | None = None,
 ) -> None:
     """
     Write a pymatgen Structure to a VASP POSCAR file.
@@ -228,13 +225,13 @@ def write_poscar(
 
     # Stable unique ordering by first appearance
     seen = set()
-    ordered_unique: List[str] = []
+    ordered_unique: list[str] = []
     for s in symbols:
         if s not in seen:
             seen.add(s)
             ordered_unique.append(s)
 
-    grouped_indices: List[int] = []
+    grouped_indices: list[int] = []
     for s in ordered_unique:
         grouped_indices.extend([i for i, sym in enumerate(symbols) if sym == s])
 
@@ -244,9 +241,7 @@ def write_poscar(
     grouped_sd = None
     if selective_dynamics is not None:
         if len(selective_dynamics) != len(structure):
-            raise ValueError(
-                "selective_dynamics length must match number of sites in structure"
-            )
+            raise ValueError("selective_dynamics length must match number of sites in structure")
         grouped_sd = [selective_dynamics[i] for i in grouped_indices]
 
     grouped_struct = Structure(
@@ -261,7 +256,7 @@ def write_poscar(
     poscar.write_file(str(filepath))
 
 
-def get_element_symbols(structure: Structure) -> List[str]:
+def get_element_symbols(structure: Structure) -> list[str]:
     """
     Extract plain element symbols for each site in a structure.
 
@@ -274,7 +269,7 @@ def get_element_symbols(structure: Structure) -> List[str]:
     -------
     symbols
         List of element symbols (length = number of sites).
-        
+
     Notes
     -----
     This is a frequently-called utility function. For repeated calls on
@@ -287,17 +282,17 @@ def get_element_symbols(structure: Structure) -> List[str]:
 def _load_and_cache_structure(filepath_str: str) -> Structure:
     """
     Internal cached structure loader.
-    
+
     Parameters
     ----------
     filepath_str
         String path to structure file.
-        
+
     Returns
     -------
     structure
         Loaded pymatgen Structure.
-        
+
     Notes
     -----
     Uses LRU cache to store up to 32 recently loaded structures.
