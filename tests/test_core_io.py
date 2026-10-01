@@ -6,7 +6,6 @@ read_cp2k_xyz_last_frame, and get_element_symbols.
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -71,11 +70,11 @@ class TestLoadStructure:
     def test_unsupported_format_raises(self, tmp_path):
         bad = tmp_path / "struct.pdb"
         bad.write_text("dummy")
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             load_structure(bad)
 
     def test_missing_file_raises(self, tmp_path):
-        with pytest.raises(Exception):
+        with pytest.raises(FileNotFoundError):
             load_structure(tmp_path / "nonexistent.cif")
 
 
@@ -90,7 +89,9 @@ class TestWritePoscar:
     @pytest.fixture()
     def simple_structure(self):
         lattice = Lattice.cubic(5.0)
-        return Structure(lattice, ["Si", "O", "Si"], [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]])
+        return Structure(
+            lattice, ["Si", "O", "Si"], [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]]
+        )
 
     def test_round_trip(self, simple_structure, tmp_path):
         out = tmp_path / "POSCAR"
@@ -115,8 +116,11 @@ class TestWritePoscar:
         """Elements are grouped by species in the output."""
         lattice = Lattice.cubic(5.0)
         # Interleaved species: Si, O, Si, O
-        s = Structure(lattice, ["Si", "O", "Si", "O"],
-                      [[0, 0, 0], [0.25, 0.25, 0.25], [0.5, 0.5, 0.5], [0.75, 0.75, 0.75]])
+        s = Structure(
+            lattice,
+            ["Si", "O", "Si", "O"],
+            [[0, 0, 0], [0.25, 0.25, 0.25], [0.5, 0.5, 0.5], [0.75, 0.75, 0.75]],
+        )
         out = tmp_path / "POSCAR"
         write_poscar(s, out)
         text = out.read_text()
@@ -175,11 +179,15 @@ class TestGetElementSymbols:
         assert len(result) == 2
 
     def test_string_types(self):
-        s = Structure(Lattice.cubic(5.0), ["Pb", "I", "C"], [[0, 0, 0], [0.3, 0.3, 0.3], [0.6, 0.6, 0.6]])
+        s = Structure(
+            Lattice.cubic(5.0), ["Pb", "I", "C"], [[0, 0, 0], [0.3, 0.3, 0.3], [0.6, 0.6, 0.6]]
+        )
         result = get_element_symbols(s)
         assert all(isinstance(sym, str) for sym in result)
 
     def test_known_elements(self):
-        s = Structure(Lattice.cubic(5.0), ["Pb", "I", "C"], [[0, 0, 0], [0.3, 0.3, 0.3], [0.6, 0.6, 0.6]])
+        s = Structure(
+            Lattice.cubic(5.0), ["Pb", "I", "C"], [[0, 0, 0], [0.3, 0.3, 0.3], [0.6, 0.6, 0.6]]
+        )
         result = get_element_symbols(s)
         assert result == ["Pb", "I", "C"]

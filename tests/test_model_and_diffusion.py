@@ -8,6 +8,7 @@ equivariance properties, schedule monotonicity).
 from __future__ import annotations
 
 import sys
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -20,13 +21,19 @@ _POC_DIR = Path(__file__).resolve().parents[1] / "fullerene_e3gen"
 if str(_POC_DIR) not in sys.path:
     sys.path.insert(0, str(_POC_DIR))
 
-from model import FullereneDiffusionModel, GlobalAttentionPool, bond_length_loss, sphericity_loss, _scatter_softmax
-from diffusion_utils import DiffusionScheduler
-
+# Preserve dependency checks and search-path setup before loading the ML modules.
+DiffusionScheduler = import_module("diffusion_utils").DiffusionScheduler
+_model = import_module("model")
+FullereneDiffusionModel = _model.FullereneDiffusionModel
+GlobalAttentionPool = _model.GlobalAttentionPool
+_scatter_softmax = _model._scatter_softmax
+bond_length_loss = _model.bond_length_loss
+sphericity_loss = _model.sphericity_loss
 
 # ---------------------------------------------------------------------------
 # Model architecture tests
 # ---------------------------------------------------------------------------
+
 
 class TestFullereneDiffusionModel:
     """Test EGNN model forward pass shapes and properties."""
@@ -96,13 +103,15 @@ class TestFullereneDiffusionModel:
         # With random initialization, outputs may be very similar, so use a
         # loose tolerance and check relative difference instead.
         diff = (out_t0 - out_t500).abs().max().item()
-        assert diff > 0 or not torch.equal(out_t0, out_t500), \
+        assert diff > 0 or not torch.equal(out_t0, out_t500), (
             "Identical outputs for different timesteps"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Scatter softmax tests
 # ---------------------------------------------------------------------------
+
 
 class TestScatterSoftmax:
     """Test the per-node scatter softmax implementation."""
@@ -143,22 +152,20 @@ class TestScatterSoftmax:
 # Loss function tests
 # ---------------------------------------------------------------------------
 
+
 class TestBondLengthLoss:
     """Test bond_length_loss function."""
 
     def test_perfect_bonds_zero_loss(self):
         # Square with side length 1.42
-        pos = torch.tensor([[0.0, 0.0, 0.0], [1.42, 0.0, 0.0],
-                            [1.42, 1.42, 0.0], [0.0, 1.42, 0.0]])
+        pos = torch.tensor([[0.0, 0.0, 0.0], [1.42, 0.0, 0.0], [1.42, 1.42, 0.0], [0.0, 1.42, 0.0]])
         edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]])
-        batch = torch.zeros(4, dtype=torch.long)
         loss = bond_length_loss(pos, edge_index, target_length=1.42)
         assert loss.item() == pytest.approx(0.0, abs=1e-4)
 
     def test_wrong_bonds_nonzero_loss(self):
         pos = torch.tensor([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
         edge_index = torch.tensor([[0], [1]])
-        batch = torch.zeros(2, dtype=torch.long)
         loss = bond_length_loss(pos, edge_index, target_length=1.42)
         assert loss.item() > 0.0
 
@@ -188,6 +195,7 @@ class TestSphericityLoss:
 # ---------------------------------------------------------------------------
 # Diffusion scheduler tests
 # ---------------------------------------------------------------------------
+
 
 class TestDiffusionScheduler:
     """Test DiffusionScheduler properties."""
@@ -219,6 +227,7 @@ class TestDiffusionScheduler:
 # ---------------------------------------------------------------------------
 # Global attention tests
 # ---------------------------------------------------------------------------
+
 
 class TestGlobalAttentionPool:
     """Test the GlobalAttentionPool module."""
@@ -278,11 +287,14 @@ class TestGlobalAttentionModel:
 
         # Random rotation matrix
         theta = torch.tensor(1.23)
-        R = torch.tensor([
-            [torch.cos(theta), -torch.sin(theta), 0],
-            [torch.sin(theta),  torch.cos(theta), 0],
-            [0,                 0,                 1],
-        ], dtype=torch.float32)
+        R = torch.tensor(
+            [
+                [torch.cos(theta), -torch.sin(theta), 0],
+                [torch.sin(theta), torch.cos(theta), 0],
+                [0, 0, 1],
+            ],
+            dtype=torch.float32,
+        )
 
         model_with_ga.eval()
         with torch.no_grad():

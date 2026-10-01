@@ -1,6 +1,5 @@
 """Tests for interfaceml.utils.validation module."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -85,4 +84,4 @@ class TestValidatePositiveNumber:
 
     def test_nan_raises(self):
         with pytest.raises(ValidationError, match="finite"):
-            validate_positive_number(float('nan'), "param")
+            validate_positive_number(float("nan"), "param")

@@ -1,14 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InterfaceML Documentation</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% extends "base.html" %}
+
+{% block title %}InterfaceML Documentation{% endblock %}
+
+{% block extra_css %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
-</head>
-<body class="docs-page">
+{% endblock %}
+
+{% block body_attrs %} class="docs-page"{% endblock %}
+
+{% block body %}
     <header class="header docs-header">
         <div class="container">
             <div class="docs-topbar">
@@ -19,9 +19,14 @@
                 <nav class="docs-nav">
                     <a href="#overview" class="nav-link">Overview</a>
                     <a href="#manual" class="nav-link">Manual</a>
+                    <a href="#algorithms" class="nav-link">Algorithms</a>
+                    <a href="#math" class="nav-link">Math</a>
                     <a href="#api" class="nav-link">API</a>
                     <a href="#docs-map" class="nav-link">Docs Map</a>
-                    <a href="/app" class="nav-link">Web App</a>
+                    <a href="/app" class="nav-link nav-link-app">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:2px"><path d="M6 3h7v7M13 3L5 11"/></svg>
+                        Web App
+                    </a>
                 </nav>
             </div>
             <div class="docs-hero">
@@ -250,6 +255,332 @@ io.write_poscar(structure, "output.vasp", selective_dynamics=selective)</code></
             </div>
         </section>
 
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- Algorithm Overview                                        -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <section id="algorithms" class="docs-section" data-doc-section data-doc-title="Algorithm Overview">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Algorithm Overview</h2>
+                    <p>InterfaceML supports two generative architectures for molecular structure generation, each paired with a different sampling framework.</p>
+                </div>
+
+                <!-- EGNN vs PaiNN comparison -->
+                <div class="doc-grid" style="margin-top:1.8rem;">
+                    <article class="doc-card algo-card" data-doc-item>
+                        <h3>EGNN + DDPM</h3>
+                        <p>The <strong>Equivariant Graph Neural Network</strong> uses radial basis function (RBF) encoding of inter-atomic distances, message-passing with soft attention, and equivariant coordinate updates. Paired with a <strong>Denoising Diffusion Probabilistic Model</strong> (cosine noise schedule, 1000 timesteps), it iteratively removes Gaussian noise to generate molecular geometries.</p>
+                        <div class="tag-row">
+                            <span class="tag">E(3) Equivariant</span>
+                            <span class="tag">Attention</span>
+                            <span class="tag">Cosine schedule</span>
+                            <span class="tag">DDIM sampling</span>
+                        </div>
+                    </article>
+                    <article class="doc-card algo-card" data-doc-item>
+                        <h3>PaiNN + Flow Matching</h3>
+                        <p>The <strong>Polarizable Atom Interaction Neural Network</strong> maintains separate scalar and vector channels, using sinc-basis radial filters and inner-product coupling to encode bond angles without explicit angular features. Paired with <strong>Flow Matching</strong> (linear interpolation, Euler ODE integration, ~50 steps), it learns a velocity field that transports noise to data.</p>
+                        <div class="tag-row">
+                            <span class="tag">Scalar + Vector</span>
+                            <span class="tag">Sinc basis</span>
+                            <span class="tag">ODE solver</span>
+                            <span class="tag">50 steps</span>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Diffusion frameworks -->
+                <div class="doc-grid" style="margin-top:1.5rem;">
+                    <article class="doc-card" data-doc-item>
+                        <h3>DDPM Framework</h3>
+                        <p>The forward process progressively corrupts data with Gaussian noise according to a cosine variance schedule. The reverse process learns to denoise, recovering clean structures step by step.</p>
+                        <div class="equation-block">
+                            $$q(x_t | x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\, x_0,\; (1-\bar\alpha_t)I\right)$$
+                        </div>
+                        <p class="card-note">Cosine schedule: $\bar\alpha_t = \cos^2\!\left(\frac{t/T + s}{1+s}\cdot\frac{\pi}{2}\right)$ with $s=0.008$. DDIM acceleration uses a stride-based sub-sequence for faster sampling.</p>
+                    </article>
+                    <article class="doc-card" data-doc-item>
+                        <h3>Flow Matching Framework</h3>
+                        <p>Instead of iterative denoising, flow matching learns a velocity field that defines a continuous trajectory from noise to data via an ODE.</p>
+                        <div class="equation-block">
+                            $$x_t = (1-t)\,x_0 + t\,\xi, \quad v_\text{target} = \xi - x_0$$
+                        </div>
+                        <p class="card-note">The model predicts $v_\theta(x_t, t)$ and generation uses Euler integration: $x_{t+\Delta t} = x_t + \Delta t \cdot v_\theta(x_t, t)$.</p>
+                    </article>
+                </div>
+
+                <!-- Physics losses -->
+                <div class="doc-grid" style="margin-top:1.5rem;">
+                    <article class="doc-card" data-doc-item style="grid-column: 1 / -1;">
+                        <h3>Physics-Informed Loss Functions</h3>
+                        <p>Both architectures can be fine-tuned with physics losses that encourage chemically valid geometries. Each loss is weighted by a time-conditioned sigmoid that focuses enforcement on late (clean) timesteps:</p>
+                        <div class="equation-block">
+                            $$\mathcal{L}_\text{total} = \mathcal{L}_\text{denoise} + \sum_i \lambda_i \cdot w(t) \cdot \mathcal{L}_i, \quad w(t) = \sigma\!\left(-15\!\left(\tfrac{t}{T} - 0.4\right)\right)$$
+                        </div>
+                        <div class="example-grid">
+                            <div class="example-block">
+                                <h4>Bond Length Loss</h4>
+                                <p class="card-note">Huber loss on predicted inter-atomic distances vs. ideal C-C bond length (1.45 A). Penalizes bonds that are too short or too long.</p>
+                            </div>
+                            <div class="example-block">
+                                <h4>Sphericity Loss</h4>
+                                <p class="card-note">Computed from eigenvalues of the gyration tensor. Penalizes deviation from a perfect sphere (ratio of smallest to largest eigenvalue).</p>
+                            </div>
+                            <div class="example-block">
+                                <h4>Connectivity Loss</h4>
+                                <p class="card-note">Smooth polynomial penalty on atom coordination numbers. Encourages exactly 3 neighbors per carbon (sp2 bonding).</p>
+                            </div>
+                            <div class="example-block">
+                                <h4>Topology Loss</h4>
+                                <p class="card-note">Ring-counting penalty for non-fullerene ring sizes. Encourages 5- and 6-membered rings (pentagons and hexagons). Disabled for large molecules (>70 atoms).</p>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- SVG: Model Architecture Comparison -->
+                <div class="algo-diagram" style="margin-top:2rem;">
+                    <h3 style="margin-bottom:1rem;">Model Architecture Comparison</h3>
+                    <svg viewBox="0 0 800 380" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:800px;">
+                        <defs>
+                            <linearGradient id="dg-blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient>
+                            <linearGradient id="dg-purple" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient>
+                            <marker id="dg-arrow-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6Z" fill="#2563eb"/></marker>
+                            <marker id="dg-arrow-p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6Z" fill="#7c3aed"/></marker>
+                        </defs>
+                        <!-- Labels -->
+                        <text x="200" y="24" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="14" fill="#2563eb">EGNN + DDPM</text>
+                        <text x="600" y="24" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="14" fill="#7c3aed">PaiNN + Flow Matching</text>
+                        <!-- Divider -->
+                        <line x1="400" y1="10" x2="400" y2="370" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+                        <!-- EGNN column -->
+                        <rect x="110" y="44" width="180" height="40" rx="8" fill="url(#dg-blue)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="200" y="69" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#1e3a5f">Input Graph (x, h)</text>
+                        <line x1="200" y1="84" x2="200" y2="104" stroke="#2563eb" stroke-width="1.5" marker-end="url(#dg-arrow-b)"/>
+                        <rect x="110" y="108" width="180" height="40" rx="8" fill="url(#dg-blue)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="200" y="133" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#1e3a5f">RBF Distance Encoding</text>
+                        <line x1="200" y1="148" x2="200" y2="168" stroke="#2563eb" stroke-width="1.5" marker-end="url(#dg-arrow-b)"/>
+                        <rect x="110" y="172" width="180" height="40" rx="8" fill="url(#dg-blue)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="200" y="197" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#1e3a5f">Message Passing + Attention</text>
+                        <line x1="200" y1="212" x2="200" y2="232" stroke="#2563eb" stroke-width="1.5" marker-end="url(#dg-arrow-b)"/>
+                        <rect x="110" y="236" width="180" height="40" rx="8" fill="url(#dg-blue)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="200" y="261" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#1e3a5f">Equivariant Coord Update</text>
+                        <line x1="200" y1="276" x2="200" y2="296" stroke="#2563eb" stroke-width="1.5" marker-end="url(#dg-arrow-b)"/>
+                        <rect x="110" y="300" width="180" height="40" rx="8" fill="url(#dg-blue)" opacity="0.25" stroke="#2563eb" stroke-width="2"/><text x="200" y="325" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="700" fill="#1e3a5f">1000-step Denoise</text>
+                        <!-- PaiNN column -->
+                        <rect x="510" y="44" width="180" height="40" rx="8" fill="url(#dg-purple)" opacity="0.15" stroke="#7c3aed" stroke-width="1.5"/><text x="600" y="69" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#3b1f6e">Input Graph (x, s, V)</text>
+                        <line x1="600" y1="84" x2="600" y2="104" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#dg-arrow-p)"/>
+                        <rect x="510" y="108" width="180" height="40" rx="8" fill="url(#dg-purple)" opacity="0.15" stroke="#7c3aed" stroke-width="1.5"/><text x="600" y="133" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#3b1f6e">Sinc Basis + Cosine Cutoff</text>
+                        <line x1="600" y1="148" x2="600" y2="168" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#dg-arrow-p)"/>
+                        <rect x="510" y="172" width="180" height="40" rx="8" fill="url(#dg-purple)" opacity="0.15" stroke="#7c3aed" stroke-width="1.5"/><text x="600" y="197" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#3b1f6e">Scalar-Vector Interaction</text>
+                        <line x1="600" y1="212" x2="600" y2="232" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#dg-arrow-p)"/>
+                        <rect x="510" y="236" width="180" height="40" rx="8" fill="url(#dg-purple)" opacity="0.15" stroke="#7c3aed" stroke-width="1.5"/><text x="600" y="261" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#3b1f6e">AdaLayerNorm (time cond.)</text>
+                        <line x1="600" y1="276" x2="600" y2="296" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#dg-arrow-p)"/>
+                        <rect x="510" y="300" width="180" height="40" rx="8" fill="url(#dg-purple)" opacity="0.25" stroke="#7c3aed" stroke-width="2"/><text x="600" y="325" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="700" fill="#3b1f6e">50-step ODE (Euler)</text>
+                    </svg>
+                </div>
+
+                <!-- SVG: Active Learning Pipeline -->
+                <div class="algo-diagram" style="margin-top:2rem;">
+                    <h3 style="margin-bottom:1rem;">Active Learning Pipeline</h3>
+                    <svg viewBox="0 0 800 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:800px;">
+                        <defs>
+                            <linearGradient id="al-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0f766e"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient>
+                            <marker id="al-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6Z" fill="#0f766e"/></marker>
+                        </defs>
+                        <!-- Nodes -->
+                        <rect x="20" y="40" width="110" height="44" rx="8" fill="url(#al-grad)" opacity="0.15" stroke="#0f766e" stroke-width="1.5"/><text x="75" y="67" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#0f4f4a">Generate</text>
+                        <line x1="130" y1="62" x2="155" y2="62" stroke="#0f766e" stroke-width="1.5" marker-end="url(#al-arrow)"/>
+                        <rect x="160" y="40" width="110" height="44" rx="8" fill="url(#al-grad)" opacity="0.15" stroke="#0f766e" stroke-width="1.5"/><text x="215" y="67" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#0f4f4a">Build Interface</text>
+                        <line x1="270" y1="62" x2="295" y2="62" stroke="#0f766e" stroke-width="1.5" marker-end="url(#al-arrow)"/>
+                        <rect x="300" y="40" width="110" height="44" rx="8" fill="url(#al-grad)" opacity="0.15" stroke="#0f766e" stroke-width="1.5"/><text x="355" y="67" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#0f4f4a">DFT Prep</text>
+                        <line x1="410" y1="62" x2="435" y2="62" stroke="#0f766e" stroke-width="1.5" marker-end="url(#al-arrow)"/>
+                        <rect x="440" y="40" width="110" height="44" rx="8" fill="url(#al-grad)" opacity="0.15" stroke="#0f766e" stroke-width="1.5"/><text x="495" y="67" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#0f4f4a">HPC / DFT</text>
+                        <line x1="550" y1="62" x2="575" y2="62" stroke="#0f766e" stroke-width="1.5" marker-end="url(#al-arrow)"/>
+                        <rect x="580" y="40" width="110" height="44" rx="8" fill="url(#al-grad)" opacity="0.15" stroke="#0f766e" stroke-width="1.5"/><text x="635" y="67" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#0f4f4a">Parse Results</text>
+                        <!-- Return arrow -->
+                        <line x1="690" y1="62" x2="720" y2="62" stroke="#0f766e" stroke-width="1.5"/>
+                        <line x1="720" y1="62" x2="720" y2="140" stroke="#0f766e" stroke-width="1.5"/>
+                        <rect x="300" y="120" width="110" height="44" rx="8" fill="url(#al-grad)" opacity="0.25" stroke="#0f766e" stroke-width="2"/><text x="355" y="147" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="700" fill="#0f4f4a">Retrain Model</text>
+                        <line x1="720" y1="142" x2="415" y2="142" stroke="#0f766e" stroke-width="1.5" marker-end="url(#al-arrow)"/>
+                        <line x1="300" y1="142" x2="75" y2="142" stroke="#0f766e" stroke-width="1.5"/>
+                        <line x1="75" y1="142" x2="75" y2="89" stroke="#0f766e" stroke-width="1.5" marker-end="url(#al-arrow)"/>
+                        <!-- Loop label -->
+                        <text x="400" y="200" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#64748b" font-style="italic">Cycle repeats: each round improves the generative model with DFT-validated structures</text>
+                    </svg>
+                </div>
+
+                <!-- SVG: Interface Building Detail -->
+                <div class="algo-diagram" style="margin-top:2rem;">
+                    <h3 style="margin-bottom:1rem;">Interface Building Pipeline</h3>
+                    <svg viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:800px;">
+                        <defs>
+                            <linearGradient id="ib-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#0f766e"/></linearGradient>
+                            <marker id="ib-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6Z" fill="#2563eb"/></marker>
+                        </defs>
+                        <rect x="5" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="50" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="#1e3a5f">Bulk CIF</text>
+                        <line x1="95" y1="50" x2="112" y2="50" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ib-arrow)"/>
+                        <rect x="118" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="163" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="#1e3a5f">Cut Slab</text>
+                        <line x1="208" y1="50" x2="225" y2="50" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ib-arrow)"/>
+                        <rect x="231" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="276" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="#1e3a5f">Supercell</text>
+                        <line x1="321" y1="50" x2="338" y2="50" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ib-arrow)"/>
+                        <rect x="344" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="389" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="#1e3a5f">Adsorbate</text>
+                        <line x1="434" y1="50" x2="451" y2="50" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ib-arrow)"/>
+                        <rect x="457" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="502" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="#1e3a5f">Stack</text>
+                        <line x1="547" y1="50" x2="564" y2="50" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ib-arrow)"/>
+                        <rect x="570" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.15" stroke="#2563eb" stroke-width="1.5"/><text x="615" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="#1e3a5f">Fix Layers</text>
+                        <line x1="660" y1="50" x2="677" y2="50" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ib-arrow)"/>
+                        <rect x="683" y="30" width="90" height="40" rx="8" fill="url(#ib-grad)" opacity="0.25" stroke="#2563eb" stroke-width="2"/><text x="728" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" font-weight="700" fill="#1e3a5f">POSCAR</text>
+                    </svg>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- Mathematical Details                                      -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <section id="math" class="docs-section math-section" data-doc-section data-doc-title="Mathematical Details">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Mathematical Details</h2>
+                    <p>Full derivations and formulas for both model architectures, sampling frameworks, and physics loss functions.</p>
+                </div>
+
+                <!-- EGNN Layer -->
+                <article class="doc-card" data-doc-item style="margin-top:1.8rem;">
+                    <h3>EGNN Layer</h3>
+                    <p>Each layer computes edge messages, attention weights, node updates, and equivariant coordinate updates.</p>
+                    <div class="equation-block">
+                        <strong>RBF encoding:</strong>
+                        $$\text{RBF}_k(d) = \exp\!\left(-\gamma_k (d - \mu_k)^2\right), \quad k=1,\ldots,K$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Edge messages:</strong>
+                        $$m_{ij} = \phi_e\!\left(h_i,\, h_j,\, \text{RBF}(d_{ij})\right)$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Attention:</strong>
+                        $$\alpha_{ij} = \text{softmax}_j\!\left(\frac{\phi_q(h_i)^T \phi_k(h_j)}{\sqrt{d_\text{model}}}\right)$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Node update (with residual):</strong>
+                        $$h_i' = h_i + \phi_h\!\left(\sum_j \alpha_{ij}\, m_{ij}\right)$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Coordinate update (equivariant):</strong>
+                        $$\Delta x_i = \sum_j \alpha_{ij}\,(x_i - x_j)\,\tanh\!\left(\text{MLP}(m_{ij})\right) \cdot e^{-d_{ij}^2/2}$$
+                        $$x_i' = x_i + \Delta x_i$$
+                    </div>
+                    <p class="card-note">The coordinate update preserves E(3) equivariance because $x_i - x_j$ transforms covariantly under rotations and translations, and all scalar coefficients depend only on invariant quantities (distances, node features).</p>
+                </article>
+
+                <!-- PaiNN Layer -->
+                <article class="doc-card" data-doc-item style="margin-top:1.5rem;">
+                    <h3>PaiNN Layer</h3>
+                    <p>PaiNN maintains scalar features $s_i \in \mathbb{R}^F$ and vector features $V_i \in \mathbb{R}^{F \times 3}$ per atom.</p>
+                    <div class="equation-block">
+                        <strong>Sinc basis with cosine cutoff:</strong>
+                        $$f_n(d) = \frac{\sin(n\pi d/r_c)}{d} \cdot \frac{1}{2}\left(\cos\!\left(\frac{\pi d}{r_c}\right) + 1\right)$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Filter network (3 channels):</strong>
+                        $$W_s,\, W_{vv},\, W_{vs} = \text{split}\!\left(\text{MLP}(f(d_{ij}))\right) \in \mathbb{R}^{3F}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Message passing:</strong>
+                        $$\Delta s_i = \sum_j W_s \odot s_j, \quad \Delta V_i = \sum_j W_{vv} \odot V_j + W_{vs} \odot s_j \cdot \hat{r}_{ij}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Update module (inner product encodes angles):</strong>
+                        $$a_{ss},\, a_{sv},\, a_{vv} = \text{MLP}(s_i)$$
+                        $$\Delta s_i^{\text{upd}} = a_{ss} + a_{sv} \cdot \langle U V_i,\, V V_i \rangle$$
+                        $$\Delta V_i^{\text{upd}} = a_{vv} \cdot U V_i$$
+                    </div>
+                    <p class="card-note">The inner product $\langle UV_i, VV_i\rangle$ captures angular information between different vector channels without explicitly computing angles, maintaining O(3) equivariance for vectors and invariance for scalars.</p>
+                </article>
+
+                <!-- DDPM Math -->
+                <article class="doc-card" data-doc-item style="margin-top:1.5rem;">
+                    <h3>DDPM Sampling</h3>
+                    <div class="equation-block">
+                        <strong>Cosine beta schedule:</strong>
+                        $$\bar\alpha_t = \cos^2\!\left(\frac{t/T + s}{1+s}\cdot\frac{\pi}{2}\right), \quad s=0.008$$
+                        $$\beta_t = 1 - \frac{\bar\alpha_t}{\bar\alpha_{t-1}}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Posterior mean (reverse step):</strong>
+                        $$\mu_\theta(x_t, t) = \frac{1}{\sqrt{\alpha_t}}\left(x_t - \frac{\beta_t}{\sqrt{1-\bar\alpha_t}}\,\epsilon_\theta(x_t, t)\right)$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>DDIM (accelerated sampling with $\eta$ parameter):</strong>
+                        $$x_{t-1} = \sqrt{\bar\alpha_{t-1}}\,\hat{x}_0 + \sqrt{1-\bar\alpha_{t-1}-\sigma_t^2}\,\epsilon_\theta(x_t,t) + \sigma_t\,\epsilon$$
+                        $$\sigma_t = \eta\sqrt{\frac{1-\bar\alpha_{t-1}}{1-\bar\alpha_t}}\sqrt{\beta_t}$$
+                    </div>
+                    <p class="card-note">When $\eta=0$ DDIM is deterministic; $\eta=1$ recovers DDPM. Sub-sequences of the full schedule allow generation in fewer steps.</p>
+                </article>
+
+                <!-- Flow Matching Math -->
+                <article class="doc-card" data-doc-item style="margin-top:1.5rem;">
+                    <h3>Flow Matching</h3>
+                    <div class="equation-block">
+                        <strong>Linear interpolation (optimal transport path):</strong>
+                        $$x_t = (1-t)\,x_1 + t\,x_0, \quad t \in [0, 1]$$
+                        $$v_\text{target}(x_t, t) = x_0 - x_1$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Training objective:</strong>
+                        $$\mathcal{L}_\text{FM} = \mathbb{E}_{t,x_0,x_1}\left[\|v_\theta(x_t, t) - v_\text{target}\|^2\right]$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Euler integration (generation):</strong>
+                        $$x_{t+\Delta t} = x_t + \Delta t \cdot v_\theta(x_t, t), \quad \Delta t = 1/N_\text{steps}$$
+                    </div>
+                    <p class="card-note">Flow matching avoids the variance explosion issues of DDPM at high noise levels and typically converges in 50 steps vs. 1000 for DDPM.</p>
+                </article>
+
+                <!-- Physics Losses Math -->
+                <article class="doc-card" data-doc-item style="margin-top:1.5rem;">
+                    <h3>Physics Loss Functions</h3>
+                    <div class="equation-block">
+                        <strong>Time-conditioned weighting:</strong>
+                        $$w(t) = \sigma\!\left(-15\!\left(\frac{t}{T} - 0.4\right)\right) = \frac{1}{1+e^{15(t/T - 0.4)}}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Bond length loss (Huber):</strong>
+                        $$\mathcal{L}_\text{bond} = \frac{1}{|\mathcal{E}|}\sum_{(i,j)\in\mathcal{E}} H_\delta(d_{ij} - d_\text{ideal}), \quad d_\text{ideal}=1.45\text{ A}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Sphericity loss (gyration tensor):</strong>
+                        $$S_{ab} = \frac{1}{N}\sum_i (r_{i,a}-\bar{r}_a)(r_{i,b}-\bar{r}_b)$$
+                        $$\mathcal{L}_\text{sphere} = 1 - \frac{\lambda_\text{min}}{\lambda_\text{max}}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Connectivity loss (smooth polynomial):</strong>
+                        $$c_i = \sum_j p(d_{ij}), \quad p(d) = \begin{cases} 1 & d \le d_1 \\ \text{smooth falloff} & d_1 < d < d_2 \\ 0 & d \ge d_2 \end{cases}$$
+                        $$\mathcal{L}_\text{conn} = \frac{1}{N}\sum_i (c_i - 3)^2$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Topology loss (ring counting):</strong>
+                        $$\mathcal{L}_\text{topo} = \sum_{k \notin \{5,6\}} n_k \cdot w_k$$
+                    </div>
+                </article>
+
+                <!-- Training Details -->
+                <article class="doc-card" data-doc-item style="margin-top:1.5rem;">
+                    <h3>Training Details</h3>
+                    <div class="equation-block">
+                        <strong>EMA (Exponential Moving Average):</strong>
+                        $$p_\text{ema} := \alpha \cdot p_\text{ema} + (1-\alpha) \cdot p_\text{model}, \quad \alpha=0.999$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Learning rate schedule (warmup + cosine decay):</strong>
+                        $$\text{lr}(t) = \begin{cases} \text{lr}_\text{max} \cdot t/T_\text{warm} & t < T_\text{warm} \\ \text{lr}_\text{min} + \frac{1}{2}(\text{lr}_\text{max}-\text{lr}_\text{min})\left(1+\cos\frac{\pi(t-T_\text{warm})}{T_\text{total}-T_\text{warm}}\right) & t \ge T_\text{warm}\end{cases}$$
+                    </div>
+                    <div class="equation-block">
+                        <strong>Biased timestep sampling:</strong>
+                        $$t \sim \text{Beta}(a, b) \cdot T, \quad a=1.5,\, b=1.0$$
+                    </div>
+                    <p class="card-note">EMA weights are used by default at generation time. The biased sampling focuses training on noisier timesteps where the model needs the most learning signal.</p>
+                </article>
+            </div>
+        </section>
+
         <section id="api" class="docs-section" data-doc-section data-doc-title="API Introduction">
             <div class="container">
                 <div class="section-header">
@@ -444,7 +775,8 @@ for i, layer in enumerate(layers, 1):
             </div>
         </div>
     </footer>
+{% endblock %}
 
+{% block extra_scripts %}
     <script src="{{ url_for('static', filename='js/docs.js') }}"></script>
-</body>
-</html>
+{% endblock %}

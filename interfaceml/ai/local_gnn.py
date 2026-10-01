@@ -31,8 +31,8 @@ inputs.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -63,6 +63,7 @@ class LocalRefinerConfig:
 
 
 if nn is None:
+
     class LocalRefinementGNN:  # type: ignore[too-few-public-methods]
         """Placeholder when PyTorch is unavailable."""
 
@@ -130,12 +131,12 @@ else:
 
         def forward(
             self,
-            h: torch.Tensor,          # (N, H) — invariant node scalars
-            v: torch.Tensor,          # (N, H, 3) — equivariant node vectors
+            h: torch.Tensor,  # (N, H) — invariant node scalars
+            v: torch.Tensor,  # (N, H, 3) — equivariant node vectors
             edge_index: torch.Tensor,  # (2, E)
-            rbf: torch.Tensor,         # (E, K) — radial basis values
-            direction: torch.Tensor,   # (E, 3) — unit direction vectors r̂_ij
-        ) -> Tuple[torch.Tensor, torch.Tensor]:
+            rbf: torch.Tensor,  # (E, K) — radial basis values
+            direction: torch.Tensor,  # (E, 3) — unit direction vectors r̂_ij
+        ) -> tuple[torch.Tensor, torch.Tensor]:
             if edge_index.numel() == 0:
                 return h, v
 
@@ -155,8 +156,9 @@ else:
             vec_msg = gate.unsqueeze(-1) * direction.unsqueeze(1)  # (E, H, 3)
             vec_agg = torch.zeros_like(v)
             # scatter-add vector messages to target nodes
-            vec_agg.index_add_(0, col.unsqueeze(-1).unsqueeze(-1).expand_as(vec_msg)[:, 0, 0],
-                               vec_msg)
+            vec_agg.index_add_(
+                0, col.unsqueeze(-1).unsqueeze(-1).expand_as(vec_msg)[:, 0, 0], vec_msg
+            )
             # Simpler scatter for 3D: reshape, add, reshape back
             N, H = v.shape[:2]
             vec_agg_flat = torch.zeros(N, H * 3, device=v.device, dtype=v.dtype)
@@ -225,10 +227,10 @@ else:
         def forward(
             self,
             atomic_numbers: torch.Tensor,  # (N,) long
-            pos: torch.Tensor,             # (N, 3) float
-            edge_index: torch.Tensor,      # (2, E) long
-            node_extra: torch.Tensor,      # (N, extra_dim)
-            edge_diff: Optional[torch.Tensor] = None,  # (E, 3) — PBC-corrected vectors
+            pos: torch.Tensor,  # (N, 3) float
+            edge_index: torch.Tensor,  # (2, E) long
+            node_extra: torch.Tensor,  # (N, extra_dim)
+            edge_diff: torch.Tensor | None = None,  # (E, 3) — PBC-corrected vectors
         ) -> torch.Tensor:
             """Predict per-atom displacements Δx.
 
@@ -250,10 +252,7 @@ else:
             # --- edge geometry ---
             if edge_index.numel() > 0:
                 row, col = edge_index
-                if edge_diff is not None:
-                    rel = edge_diff
-                else:
-                    rel = pos[row] - pos[col]
+                rel = edge_diff if edge_diff is not None else pos[row] - pos[col]
                 dist = torch.norm(rel, dim=-1).clamp(min=1e-8)
                 direction = rel / dist.unsqueeze(-1)
                 rbf = self.rbf(dist)
@@ -282,9 +281,9 @@ class LocalRefiner:
     def __init__(
         self,
         *,
-        config: Optional[LocalRefinerConfig] = None,
-        checkpoint_path: Optional[str] = None,
-        device: Optional[str] = None,
+        config: LocalRefinerConfig | None = None,
+        checkpoint_path: str | None = None,
+        device: str | None = None,
     ) -> None:
         if _TORCH_IMPORT_ERROR is not None:
             raise RuntimeError(f"PyTorch is required for LocalRefiner: {_TORCH_IMPORT_ERROR}")
@@ -379,7 +378,10 @@ class LocalRefiner:
 
         # Build PBC-aware or non-periodic edge graph
         edge_index, edge_diff = _build_radius_graph(
-            pos, cutoff=self.config.cutoff, structure=structure, device=self.device,
+            pos,
+            cutoff=self.config.cutoff,
+            structure=structure,
+            device=self.device,
         )
 
         with torch.no_grad():
@@ -406,9 +408,9 @@ def _build_radius_graph(
     pos: torch.Tensor,
     *,
     cutoff: float,
-    structure: Optional[Structure] = None,
-    device: Optional[object] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    structure: Structure | None = None,
+    device: object | None = None,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """Build a radius graph, with PBC support when a Structure is available.
 
     Parameters

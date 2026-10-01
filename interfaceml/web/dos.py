@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 
@@ -33,7 +32,7 @@ def read_cp2k_dos_like(
     ef = None
     header_lines: list[str] = []
 
-    with open(filepath, "r", errors="ignore") as handle:
+    with open(filepath, errors="ignore") as handle:
         for line in handle:
             if line.lstrip().startswith("#"):
                 header_lines.append(line.strip())
@@ -136,7 +135,5 @@ def merge_overlapping_layers(
         merged.append(current)
 
     merged_lists = [sorted(layer) for layer in merged]
-    merged_lists.sort(
-        key=lambda g: float(np.mean(heights[np.array(g, dtype=int)])) if g else 0.0
-    )
+    merged_lists.sort(key=lambda g: float(np.mean(heights[np.array(g, dtype=int)])) if g else 0.0)
     return merged_lists

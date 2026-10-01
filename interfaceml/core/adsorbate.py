@@ -8,36 +8,37 @@ It is designed to be deterministic and fast for high-throughput generation.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 from pymatgen.core import Lattice, Structure
 from pymatgen.core.surface import SlabGenerator
 
-from interfaceml.utils import geometry
 from interfaceml.core import layering
+from interfaceml.utils import geometry
 
 
 @dataclass(frozen=True)
 class SupercellChoice:
     nx: int
     ny: int
-    target_xy: Tuple[float, float]
+    target_xy: tuple[float, float]
     diameter: float
     termination: str = "auto"
-    termination_top: Tuple[str, ...] = ()
-    termination_bottom: Tuple[str, ...] = ()
+    termination_top: tuple[str, ...] = ()
+    termination_bottom: tuple[str, ...] = ()
 
 
 def build_slab(
     structure: Structure,
-    miller: Tuple[int, int, int],
+    miller: tuple[int, int, int],
     slab_thickness: float,
     vacuum: float,
     *,
     center_slab: bool = True,
-    termination: Optional[str] = None,
+    termination: str | None = None,
     layer_tol: float = 1.5,
 ) -> Structure:
     """
@@ -121,7 +122,7 @@ def rotation_matrix_from_axis_angle(axis: np.ndarray, angle_rad: float) -> np.nd
     )
 
 
-def _apply_rotation(coords: np.ndarray, rot: Optional[np.ndarray]) -> np.ndarray:
+def _apply_rotation(coords: np.ndarray, rot: np.ndarray | None) -> np.ndarray:
     if rot is None:
         return coords
     return np.dot(coords, rot.T)
@@ -131,8 +132,8 @@ def prepare_adsorbate_layer(
     adsorbate: Structure,
     lattice: Lattice,
     *,
-    xy_frac: Tuple[float, float] = (0.5, 0.5),
-    rotation: Optional[np.ndarray] = None,
+    xy_frac: tuple[float, float] = (0.5, 0.5),
+    rotation: np.ndarray | None = None,
 ) -> Structure:
     """
     Center the adsorbate and place it at a target in-plane fractional position.
@@ -156,12 +157,117 @@ def prepare_adsorbate_layer(
     )
 
 
+def molecular_clusters(s: Structure, cutoff: float = 1.8) -> np.ndarray:
+    """Connected-component labels for atoms joined by short bonds.
+
+    Cutoff 1.8 Å captures C-N/C-H/N-H/O-H (organic cations) but excludes
+    Pb-I (~3.2 Å), I-I, Cs-I, etc., so inorganic framework atoms stay
+    as singletons.
+    """
+    try:
+        from scipy.sparse import csr_matrix  # type: ignore
+        from scipy.sparse.csgraph import connected_components  # type: ignore
+    except Exception:
+        return np.arange(len(s))
+    n_sites = len(s)
+    if n_sites == 0:
+        return np.zeros(0, dtype=int)
+    try:
+        centers, neighbors, _imgs, _d = s.get_neighbor_list(r=float(cutoff))
+    except Exception:
+        return np.arange(n_sites)
+    if len(centers) == 0:
+        return np.arange(n_sites)
+    data = np.ones(len(centers), dtype=float)
+    adj = csr_matrix((data, (centers, neighbors)), shape=(n_sites, n_sites))
+    _ncomp, labels = connected_components(adj, directed=False)
+    return labels
+
+
+def molecular_unwrap(s: Structure, *, cutoff: float = 1.8) -> Structure:
+    """Unwrap molecules split by the periodic boundary along c.
+
+    Uses BFS over the PBC-aware neighbor graph: for each covalent edge
+    (atom i, neighbor j, image offset img), atoms on the j side are
+    translated so they connect to i without crossing the boundary.
+    Only c-axis unwrap is applied (in-plane periodicity stays intact for
+    surface coverage by the slab supercell).
+    """
+    n_sites = len(s)
+    if n_sites < 2:
+        return s
+    try:
+        centers, neighbors, images, _d = s.get_neighbor_list(r=float(cutoff))
+    except Exception:
+        return s
+    if len(centers) == 0:
+        return s
+
+    adjacency: dict = {}
+    for k in range(len(centers)):
+        i = int(centers[k])
+        j = int(neighbors[k])
+        img = np.asarray(images[k], dtype=float)
+        adjacency.setdefault(i, []).append((j, img))
+        adjacency.setdefault(j, []).append((i, -img))
+
+    fracs = np.array(s.frac_coords, dtype=float)
+    unwrap = fracs.copy()
+    visited = np.zeros(n_sites, dtype=bool)
+
+    for seed in range(n_sites):
+        if visited[seed] or seed not in adjacency:
+            continue
+        visited[seed] = True
+        stack = [seed]
+        while stack:
+            i = stack.pop()
+            for j, img in adjacency.get(i, []):
+                if visited[j]:
+                    continue
+                # neighbor j sits at fracs[j] + img in the i-frame.
+                # We only unwrap c-axis to avoid breaking lateral PBC tiling.
+                offset = np.array([0.0, 0.0, img[2]], dtype=float)
+                unwrap[j] = unwrap[i] + (fracs[j] + offset - fracs[i])
+                # snap x/y to lateral periodicity of the original lattice
+                unwrap[j, 0] = fracs[j, 0]
+                unwrap[j, 1] = fracs[j, 1]
+                visited[j] = True
+                stack.append(j)
+
+    if np.allclose(unwrap, fracs):
+        return s
+    return Structure(
+        s.lattice,
+        s.species,
+        unwrap,
+        coords_are_cartesian=False,
+        to_unit_cell=False,
+        site_properties=s.site_properties,
+    )
+
+
+def _site_element(site) -> str:
+    """Return bare element symbol regardless of oxidation state on the site.
+
+    Handles `Species('I-')` → 'I', `Species('Pb2+')` → 'Pb', neutral `Element('C')` → 'C'.
+    """
+    sp = site.specie
+    try:
+        return str(sp.element.symbol)
+    except AttributeError:
+        try:
+            return str(sp.symbol)
+        except AttributeError:
+            return str(sp)
+
+
 def _layer_elements(
     structure: Structure,
     *,
     which: str,
     layer_tol: float = 1.5,
-) -> Tuple[str, ...]:
+) -> tuple[str, ...]:
     n = layering.interface_normal_unit(structure)
     heights = np.dot(np.asarray(structure.cart_coords, dtype=float), n)
     if len(heights) == 0:
@@ -172,7 +278,7 @@ def _layer_elements(
         mask = heights >= (max_h - float(layer_tol))
     else:
         mask = heights <= (min_h + float(layer_tol))
-    elems = {str(site.specie) for site, keep in zip(structure, mask) if keep}
+    elems = {_site_element(site) for site, keep in zip(structure, mask) if keep}
     return tuple(sorted(elems))
 
 
@@ -191,54 +297,317 @@ def _classify_termination(elements: Iterable[str]) -> str:
     return "unknown"
 
 
+def _parse_target_atoms(raw) -> set | None:
+    """Parse user input into a normalized element-symbol set.
+
+    Accepts:
+      - None / "" / "auto" / "any"  → None (no target)
+      - list/tuple of element symbols, e.g. ["Cs", "I"]
+      - string "Cs,I" or "Cs I" or "Pb,I"
+      - legacy labels: PbI/FAI/MAI/AI/CsI/SnI/GeI/... split by uppercase letters
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (list, tuple, set)):
+        items = list(raw)
+    elif isinstance(raw, str):
+        s = raw.strip()
+        if not s or s.lower() in {"auto", "any"}:
+            return None
+        organic_aliases = {
+            "FA": ("C", "N"),
+            "MA": ("C", "N"),
+            "EA": ("C", "N"),
+            "DMA": ("C", "N"),
+            "GA": ("C", "N"),
+            "BA": ("C", "N"),
+            "IA": ("C", "N"),
+            "CA": ("C", "N"),
+        }
+        if any(ch in s for ch in (",", " ", ";", "/")):
+            raw_tokens = [
+                tok
+                for tok in s.replace(";", ",").replace("/", ",").replace(" ", ",").split(",")
+                if tok
+            ]
+        else:
+            # Tokenize labels like "PbI", "FAI", "CsBr", "DMAI": match longer
+            # organic aliases (FA, MA, DMA, ...) before element symbols [A-Z][a-z]?
+            import re as _re
+
+            pattern = _re.compile(r"(DMA|FA|MA|EA|GA|BA|IA|CA|[A-Z][a-z]?)")
+            raw_tokens = pattern.findall(s)
+        items: list[str] = []
+        for tok in raw_tokens:
+            tok = tok.strip()
+            if not tok:
+                continue
+            if tok in organic_aliases:
+                items.extend(organic_aliases[tok])
+            else:
+                items.append(tok)
+    else:
+        return None
+
+    cleaned = {str(x).strip().capitalize() for x in items if str(x).strip()}
+    cleaned = {x for x in cleaned if x and x[0].isalpha()}
+    return cleaned or None
+
+
 def _select_slab_by_termination(
-    slabs: List[Structure],
+    slabs: list[Structure],
     *,
-    target: Optional[str],
-    layer_tol: float = 1.5,
-) -> Tuple[Structure, SupercellChoice]:
+    target: str | None = None,
+    target_atoms: set | None = None,
+    layer_tol: float = 2.5,
+) -> tuple[Structure, SupercellChoice]:
+    """Pick the slab whose top layer best matches the target.
+
+    Priority: `target_atoms` (element set) > `target` (legacy label).
+
+    Scoring (target_atoms given): F1 of top-layer element set against
+    target set. Hydrogen is ignored in the comparison since most analyzers
+    care about heavy-atom termination.
+    """
     best = None
     best_score = None
-    target_norm = target.strip() if target else None
 
-    for slab in slabs:
-        top_elems = _layer_elements(slab, which="top", layer_tol=layer_tol)
-        bottom_elems = _layer_elements(slab, which="bottom", layer_tol=layer_tol)
+    if target_atoms is None and target is not None:
+        target_atoms = _parse_target_atoms(target)
+
+    target_norm = target.strip() if isinstance(target, str) and target.strip() else None
+
+    def _molecular_clusters(s: Structure, cutoff: float = 1.8) -> np.ndarray:
+        """Connected-component labels for atoms joined by short bonds.
+
+        Cutoff 1.8 Å captures C-N/C-H/N-H/O-H (organic cations) but excludes
+        Pb-I (~3.2 Å), I-I, Cs-I, etc., so inorganic framework atoms stay
+        as singletons and only molecular cations form clusters.
+        """
+        try:
+            from scipy.sparse import csr_matrix  # type: ignore
+            from scipy.sparse.csgraph import connected_components  # type: ignore
+        except Exception:
+            return np.arange(len(s))
+        n_sites = len(s)
+        if n_sites == 0:
+            return np.zeros(0, dtype=int)
+        try:
+            centers, neighbors, _imgs, _d = s.get_neighbor_list(r=float(cutoff))
+        except Exception:
+            return np.arange(n_sites)
+        if len(centers) == 0:
+            return np.arange(n_sites)
+        data = np.ones(len(centers), dtype=float)
+        adj = csr_matrix((data, (centers, neighbors)), shape=(n_sites, n_sites))
+        _ncomp, labels = connected_components(adj, directed=False)
+        return labels
+
+    def molecular_unwrap(s: Structure, *, cutoff: float = 1.8) -> Structure:
+        """Move atoms so multi-atom molecules are not split across the c-boundary.
+
+        For each molecular cluster (size >= 2), if its frac_z span > 0.5
+        (signature of wrap), atoms on the minority side are translated by ±1
+        in frac_z to rejoin the majority.
+        """
+        labels = _molecular_clusters(s, cutoff=cutoff)
+        if len(labels) == 0:
+            return s
+        fracs = np.array(s.frac_coords, dtype=float)
+        changed = False
+        for cid in np.unique(labels):
+            idx = np.where(labels == cid)[0]
+            if len(idx) < 2:
+                continue
+            z = fracs[idx, 2] % 1.0
+            if z.max() - z.min() < 0.5:
+                continue
+            upper_mask = z >= 0.5
+            lower_mask = ~upper_mask
+            if upper_mask.sum() >= lower_mask.sum():
+                fracs[idx[lower_mask], 2] = (fracs[idx[lower_mask], 2] % 1.0) + 1.0
+            else:
+                fracs[idx[upper_mask], 2] = (fracs[idx[upper_mask], 2] % 1.0) - 1.0
+            changed = True
+        if not changed:
+            return s
+        return Structure(
+            s.lattice,
+            s.species,
+            fracs,
+            coords_are_cartesian=False,
+            to_unit_cell=False,
+            site_properties=s.site_properties,
+        )
+
+    def _shift_layer_to_top(s: Structure, layer_indices: list[int]) -> Structure:
+        """Trim the slab so the given layer becomes the topmost atomic plane.
+
+        Removes all atoms strictly above the target layer. Also removes any
+        partial molecule whose atoms straddle that cut (to avoid dangling
+        bonds). The resulting slab is thinner; callers should ensure their
+        starting `slab_thickness` accounts for this.
+        """
+        n = layering.interface_normal_unit(s)
+        heights = np.dot(np.asarray(s.cart_coords, dtype=float), n)
+        if len(layer_indices) == 0:
+            return s
+        target_max = float(max(heights[i] for i in layer_indices))
+        cut_z = target_max + 0.05  # small tolerance for numerical jitter
+        keep = heights <= cut_z
+
+        # Don't truncate molecules: if any atom of a cluster is kept and
+        # another would be cut, keep both (otherwise cut both).
+        labels = molecular_clusters(s)
+        for cid in np.unique(labels):
+            idx = np.where(labels == cid)[0]
+            if len(idx) < 2:
+                continue
+            keeps_any = bool(np.any(keep[idx]))
+            cuts_any = bool(np.any(~keep[idx]))
+            if keeps_any and cuts_any:
+                # Decide: keep whole cluster only if its COM is at or below cut
+                com_z = float(np.mean(heights[idx]))
+                if com_z <= cut_z:
+                    keep[idx] = True
+                else:
+                    keep[idx] = False
+
+        keep_idx = np.where(keep)[0]
+        if len(keep_idx) == 0:
+            return s
+        new_species = [s.species[i] for i in keep_idx]
+        new_fracs = np.array(s.frac_coords, dtype=float)[keep_idx]
+        return Structure(
+            s.lattice,
+            new_species,
+            new_fracs,
+            coords_are_cartesian=False,
+            to_unit_cell=False,
+            site_properties={
+                name: [values[i] for i in keep_idx] for name, values in s.site_properties.items()
+            },
+        )
+
+    def _flip_c(s: Structure) -> Structure:
+        fracs = np.array(s.frac_coords, dtype=float)
+        fracs[:, 2] = 1.0 - fracs[:, 2]
+        return Structure(
+            s.lattice,
+            s.species,
+            fracs,
+            coords_are_cartesian=False,
+            to_unit_cell=False,
+            site_properties=s.site_properties,
+        )
+
+    def _heavy_set(layer_idx_list: list[int], s: Structure) -> set:
+        return {_site_element(s[i]) for i in layer_idx_list if _site_element(s[i]) != "H"}
+
+    def _f1_for_target(top_heavy: set, target_heavy: set) -> float:
+        if not top_heavy or not target_heavy:
+            return 0.0
+        inter = top_heavy & target_heavy
+        if not inter:
+            return 0.0
+        p = len(inter) / len(top_heavy)
+        r = len(inter) / len(target_heavy)
+        return 2 * p * r / (p + r)
+
+    # For each slab + flip: keep the original, and trim above the HIGHEST
+    # layer that matches target_atoms (so target becomes top while preserving
+    # as much slab thickness as possible). If no target, only originals.
+    candidates: list[Structure] = []
+    for s in slabs:
+        for base in (molecular_unwrap(s), molecular_unwrap(_flip_c(s))):
+            candidates.append(base)
+            if not target_atoms:
+                continue
+            try:
+                layers_idx, _ = layering.split_layers_by_z(base, gap_cut=True)
+            except Exception:
+                continue
+            target_heavy = {e for e in target_atoms if e != "H"} or set(target_atoms)
+            best_layer_idx = None
+            best_layer_pos = -1
+            for li, layer in enumerate(layers_idx):
+                if len(layer) < 2:
+                    continue
+                if li == len(layers_idx) - 1:
+                    continue  # already on top
+                heavy = _heavy_set(layer, base)
+                if _f1_for_target(heavy, target_heavy) >= 0.66 and li > best_layer_pos:
+                    best_layer_pos = li
+                    best_layer_idx = layer
+            if best_layer_idx is not None:
+                with suppress(Exception):
+                    candidates.append(_shift_layer_to_top(base, best_layer_idx))
+
+    def _terminal_elements(s: Structure) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Top/bottom chemical layers via z-gap clustering.
+
+        Falls back to height-window method if clustering yields <2 layers.
+        """
+        try:
+            layers_idx, _tol = layering.split_layers_by_z(s, gap_cut=True)
+        except Exception:
+            layers_idx = []
+        if len(layers_idx) >= 2:
+            top_e = tuple(sorted({_site_element(s[i]) for i in layers_idx[-1]}))
+            bot_e = tuple(sorted({_site_element(s[i]) for i in layers_idx[0]}))
+            return top_e, bot_e
+        return (
+            _layer_elements(s, which="top", layer_tol=layer_tol),
+            _layer_elements(s, which="bottom", layer_tol=layer_tol),
+        )
+
+    for slab in candidates:
+        top_elems, bottom_elems = _terminal_elements(slab)
         top_label = _classify_termination(top_elems)
-        bottom_label = _classify_termination(bottom_elems)
 
-        # Jaccard distance between top and bottom element sets (lower is more symmetric)
         top_set = set(top_elems)
         bottom_set = set(bottom_elems)
-        union = top_set | bottom_set
-        inter = top_set & bottom_set
-        jaccard = 1.0 if not union else 1.0 - (len(inter) / len(union))
 
-        label_penalty = 0.0
-        if target_norm and top_label != target_norm:
-            label_penalty = 1.0
-
-        score = jaccard + label_penalty
+        if target_atoms:
+            # Compare heavy-atom sets — H is structural noise (molecule edges)
+            top_heavy = {e for e in top_set if e != "H"}
+            target_heavy = {e for e in target_atoms if e != "H"} or target_atoms
+            inter = top_heavy & target_heavy
+            recall = len(inter) / len(target_heavy) if target_heavy else 0.0
+            precision = len(inter) / len(top_heavy) if top_heavy else 0.0
+            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+            score = 1.0 - f1
+            # Tiebreak: penalize symmetric slabs (unrealistic surface)
+            sym_union = top_set | bottom_set
+            sym_inter = top_set & bottom_set
+            sym = 0.0 if not sym_union else (len(sym_inter) / len(sym_union))
+            score = score + 0.05 * sym
+        else:
+            union = top_set | bottom_set
+            inter = top_set & bottom_set
+            score = 1.0 if not union else 1.0 - (len(inter) / len(union))
+            if target_norm and top_label != target_norm:
+                score += 1.0
 
         if best is None or score < best_score:
             best = (slab, top_label, top_elems, bottom_elems)
             best_score = score
 
-        if target_norm and top_label == target_norm and score <= 0.01:
-            best = (slab, top_label, top_elems, bottom_elems)
-            best_score = score
+        if target_atoms and best_score is not None and best_score < 0.01:
             break
 
     if best is None:
         raise RuntimeError("Could not select a termination slab.")
 
     slab, top_label, top_elems, bottom_elems = best
+    # Display the ACTUAL top layer composition, not the user's request
+    actual_top = "+".join(sorted(set(top_elems))) if top_elems else top_label
     info = SupercellChoice(
         nx=1,
         ny=1,
         target_xy=(0.0, 0.0),
         diameter=0.0,
-        termination=top_label,
+        termination=actual_top,
         termination_top=tuple(top_elems),
         termination_bottom=tuple(bottom_elems),
     )
@@ -251,7 +620,7 @@ def stack_structures(
     *,
     separation: float = 3.2,
     vacuum: float = 20.0,
-) -> Tuple[Structure, Structure, Structure]:
+) -> tuple[Structure, Structure, Structure]:
     """
     Stack two slabs/structures along the interface normal.
 
@@ -306,8 +675,8 @@ def stack_structures(
     interface_z_cart = max_bottom + float(separation) / 2.0
     interface_z_frac = interface_z_cart / total_z if total_z > 1e-8 else 0.5
 
-    def _wrap_layer(coords: np.ndarray, keep_above: Optional[bool]) -> List[np.ndarray]:
-        fracs: List[np.ndarray] = []
+    def _wrap_layer(coords: np.ndarray, keep_above: bool | None) -> list[np.ndarray]:
+        fracs: list[np.ndarray] = []
         for coord in coords:
             fc = combined_lat.get_fractional_coords(coord)
             fc_x = fc[0] % 1.0
@@ -331,10 +700,14 @@ def stack_structures(
             fracs.append(np.array([fc_x, fc_y, fc_z], dtype=float))
         return fracs
 
-    bottom_fracs = _wrap_layer(np.asarray(bottom_aligned.cart_coords, dtype=float), keep_above=False)
+    bottom_fracs = _wrap_layer(
+        np.asarray(bottom_aligned.cart_coords, dtype=float), keep_above=False
+    )
     top_fracs = _wrap_layer(np.asarray(top_aligned.cart_coords, dtype=float), keep_above=True)
 
-    bottom_out = Structure(combined_lat, bottom_aligned.species, bottom_fracs, coords_are_cartesian=False)
+    bottom_out = Structure(
+        combined_lat, bottom_aligned.species, bottom_fracs, coords_are_cartesian=False
+    )
     top_out = Structure(combined_lat, top_aligned.species, top_fracs, coords_are_cartesian=False)
 
     combined = Structure(combined_lat, [], [])
@@ -350,22 +723,27 @@ def build_adsorbate_interface(
     base_structure: Structure,
     adsorbate_structure: Structure,
     *,
-    miller: Tuple[int, int, int] = (0, 0, 1),
+    miller: tuple[int, int, int] = (0, 0, 1),
     slab_thickness: float = 18.0,
     vacuum: float = 20.0,
     separation: float = 3.2,
-    supercell_xy: Optional[Tuple[int, int]] = None,
+    supercell_xy: tuple[int, int] | None = None,
     buffer: float = 10.0,
-    xy_frac: Tuple[float, float] = (0.5, 0.5),
-    termination: Optional[str] = None,
+    xy_frac: tuple[float, float] = (0.5, 0.5),
+    termination: str | None = None,
+    termination_atoms: Iterable[str] | None = None,
     layer_tol: float = 1.5,
-    rotation: Optional[np.ndarray] = None,
-) -> Tuple[Structure, Structure, Structure, SupercellChoice]:
+    rotation: np.ndarray | None = None,
+) -> tuple[Structure, Structure, Structure, SupercellChoice]:
     """
     Build a perovskite/adsorbate interface from bulk inputs.
 
     Returns bottom slab, top adsorbate layer, combined interface, and supercell choice.
     """
+    target_atoms = _parse_target_atoms(termination_atoms) if termination_atoms else None
+    if target_atoms is None and termination is not None:
+        target_atoms = _parse_target_atoms(termination)
+
     slab, term_info = _select_slab_by_termination(
         SlabGenerator(
             base_structure,
@@ -375,6 +753,7 @@ def build_adsorbate_interface(
             center_slab=True,
         ).get_slabs(),
         target=termination,
+        target_atoms=target_atoms,
         layer_tol=layer_tol,
     )
 
@@ -402,6 +781,12 @@ def build_adsorbate_interface(
         separation=separation,
         vacuum=vacuum,
     )
+
+    # Repair any molecular cations / adsorbates that got split across the
+    # c-boundary by stack_structures' fc[2] % 1.0 wrapping step.
+    bottom_out = molecular_unwrap(bottom_out)
+    top_out = molecular_unwrap(top_out)
+    combined = molecular_unwrap(combined)
 
     choice = SupercellChoice(
         nx=choice.nx,

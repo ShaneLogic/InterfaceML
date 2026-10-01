@@ -14,8 +14,6 @@ proper constraints on bulk and interface regions.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set, Tuple
-
 import numpy as np
 from pymatgen.core import Structure
 
@@ -46,11 +44,8 @@ def interface_normal_unit(structure: Structure) -> np.ndarray:
     n = np.cross(a, b)
     norm = float(np.linalg.norm(n))
 
-    if norm < 1e-12:
-        # Fallback for degenerate cases (2D or collinear a, b)
-        n = np.array([0.0, 0.0, 1.0], dtype=float)
-    else:
-        n = n / norm
+    # Fallback for degenerate cases (2D or collinear a, b).
+    n = np.array([0.0, 0.0, 1.0], dtype=float) if norm < 1e-12 else n / norm
 
     # Ensure positive projection along c
     if float(np.dot(n, c)) < 0.0:
@@ -62,7 +57,7 @@ def interface_normal_unit(structure: Structure) -> np.ndarray:
 def unwrap_periodic_1d(
     values_mod: np.ndarray,
     period: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Unwrap a periodic 1D coordinate by cutting at the largest gap.
 
@@ -83,7 +78,7 @@ def unwrap_periodic_1d(
         Indices of atoms in unwrapped order (sorted by unwrapped coordinate).
     coord_unwrapped
         Unwrapped coordinates in [0, period), with the cut at the largest gap.
-        
+
     Notes
     -----
     The algorithm works by:
@@ -95,7 +90,7 @@ def unwrap_periodic_1d(
     # Early return for empty arrays
     if len(values_mod) == 0:
         return np.array([], dtype=int), np.array([], dtype=float)
-    
+
     # Single atom case
     if len(values_mod) == 1:
         return np.array([0], dtype=int), np.array([0.0], dtype=float)
@@ -129,7 +124,7 @@ def split_stack_layers(
     n_interfaces: int,
     *,
     min_gap: float = 0.0,
-) -> List[List[int]]:
+) -> list[list[int]]:
     """
     Split a stacked heterostructure into layers by detecting large gaps.
 
@@ -187,7 +182,7 @@ def split_stack_layers(
     # Identify the (n_layers - 1) largest gaps as layer boundaries
     cut_needed = n_layers - 1
     gap_order = np.argsort(diffs)[::-1]
-    cuts: List[int] = []
+    cuts: list[int] = []
     for idx in gap_order:
         if float(diffs[idx]) < float(min_gap):
             continue
@@ -200,14 +195,12 @@ def split_stack_layers(
     # Split the unwrapped indices into groups
     starts = [0] + cuts
     ends = cuts + [len(order_unwrapped)]
-    groups: List[List[int]] = []
+    groups: list[list[int]] = []
     for s, e in zip(starts, ends):
         groups.append([int(i) for i in order_unwrapped[s:e].tolist()])
 
     # Sort groups by mean absolute height for stable bottom-to-top ordering
-    groups.sort(
-        key=lambda g: float(np.mean(heights[np.array(g, dtype=int)])) if g else 0.0
-    )
+    groups.sort(key=lambda g: float(np.mean(heights[np.array(g, dtype=int)])) if g else 0.0)
 
     return groups
 
@@ -229,7 +222,7 @@ def auto_layer_tolerance(height_diffs: np.ndarray) -> float:
     -------
     tolerance
         Estimated layer separation threshold in Angstroms, clamped to [0.2, 1.0].
-        
+
     Notes
     -----
     Uses a heuristic where inter-layer gaps are typically ~6x larger than
@@ -246,7 +239,7 @@ def auto_layer_tolerance(height_diffs: np.ndarray) -> float:
     # Use median for robustness against outliers
     median = float(np.median(diffs))
     threshold = 6.0 * median  # Heuristic: inter-layer gaps are ~6x intra-layer
-    
+
     # Clamp to physically reasonable range [0.2, 1.0] Angstroms
     return float(np.clip(threshold, 0.20, 1.00))
 
@@ -254,9 +247,9 @@ def auto_layer_tolerance(height_diffs: np.ndarray) -> float:
 def split_layers_by_z(
     structure: Structure,
     *,
-    tolerance: Optional[float] = None,
+    tolerance: float | None = None,
     gap_cut: bool = True,
-) -> Tuple[List[List[int]], float]:
+) -> tuple[list[list[int]], float]:
     """
     Cluster all atoms into z-layers based on projected heights.
 
@@ -306,8 +299,8 @@ def split_layers_by_z(
     tol_used = float(tolerance) if tolerance is not None else auto_layer_tolerance(diffs)
 
     # Cluster atoms into layers using the tolerance
-    layers: List[List[int]] = []
-    current: List[int] = [int(order[0])]
+    layers: list[list[int]] = []
+    current: list[int] = [int(order[0])]
     for i in range(1, len(order)):
         if float(h_unwrapped[i] - h_unwrapped[i - 1]) > tol_used:
             layers.append(current)
@@ -317,9 +310,7 @@ def split_layers_by_z(
     layers.append(current)
 
     # Sort layers by mean absolute height for stable ordering
-    layers.sort(
-        key=lambda g: float(np.mean(heights[np.array(g, dtype=int)])) if g else 0.0
-    )
+    layers.sort(key=lambda g: float(np.mean(heights[np.array(g, dtype=int)])) if g else 0.0)
 
     return layers, tol_used
 
@@ -328,8 +319,8 @@ def connected_components_by_distance(
     structure: Structure,
     indices: np.ndarray,
     *,
-    cutoffs: Dict[Tuple[str, str], float],
-) -> List[List[int]]:
+    cutoffs: dict[tuple[str, str], float],
+) -> list[list[int]]:
     """
     Find connected components (molecules) using distance-based bonding criteria.
 
@@ -351,7 +342,7 @@ def connected_components_by_distance(
     -------
     components
         List of connected components, each a list of global atom indices.
-        
+
     Notes
     -----
     Uses depth-first search (DFS) for component detection. Time complexity
@@ -367,12 +358,12 @@ def connected_components_by_distance(
     n = len(idx_list)
 
     # Build adjacency list with optimized distance checks
-    adj: List[List[int]] = [[] for _ in range(n)]
-    
+    adj: list[list[int]] = [[] for _ in range(n)]
+
     # Pre-extract coordinates and symbols for faster access
     local_coords = coords[idx_list]
     local_syms = [syms[ia] for ia in idx_list]
-    
+
     for a in range(n):
         sa = local_syms[a]
         pa = local_coords[a]
@@ -390,16 +381,16 @@ def connected_components_by_distance(
 
     # DFS to find connected components
     seen = [False] * n
-    comps: List[List[int]] = []
-    
+    comps: list[list[int]] = []
+
     for start in range(n):
         if seen[start]:
             continue
         # Use iterative DFS to avoid recursion limit issues
         stack = [start]
         seen[start] = True
-        comp_local: List[int] = []
-        
+        comp_local: list[int] = []
+
         while stack:
             u = stack.pop()
             comp_local.append(u)
@@ -407,7 +398,7 @@ def connected_components_by_distance(
                 if not seen[v]:
                     seen[v] = True
                     stack.append(v)
-        
+
         # Convert local indices back to global
         comps.append([idx_list[i] for i in comp_local])
 
@@ -416,10 +407,10 @@ def connected_components_by_distance(
 
 def include_whole_molecules(
     structure: Structure,
-    fixed_indices: List[int],
+    fixed_indices: list[int],
     *,
-    molecule_elements: Optional[Set[str]] = None,
-) -> List[int]:
+    molecule_elements: set[str] | None = None,
+) -> list[int]:
     """
     Expand a fixed-atom list to include complete organic molecules.
 
@@ -448,9 +439,7 @@ def include_whole_molecules(
         molecule_elements = {"C", "N", "H"}
 
     syms = get_element_symbols(structure)
-    mol_idx = np.array(
-        [i for i, s in enumerate(syms) if s in molecule_elements], dtype=int
-    )
+    mol_idx = np.array([i for i, s in enumerate(syms) if s in molecule_elements], dtype=int)
 
     # Conservative bonding cutoffs for organic molecules (Angstroms)
     cutoffs = {
@@ -473,7 +462,7 @@ def include_whole_molecules(
 
 
 def format_layer_indices(
-    indices: List[int],
+    indices: list[int],
     *,
     one_based: bool = True,
 ) -> str:

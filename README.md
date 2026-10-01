@@ -52,6 +52,9 @@ InterfaceML provides a complete suite of tools for heterojunction modeling with 
 
 ## Installation
 
+For an ARM64 CPU environment with the web application and JupyterLab, see
+[Research Containers](docs/DOCKER_RESEARCH.md).
+
 ### Prerequisites
 - Python 3.9 or higher
 - pip or conda package manager

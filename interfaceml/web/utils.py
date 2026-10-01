@@ -9,8 +9,8 @@ from flask import current_app
 
 def allowed_file(filename: str) -> bool:
     """Check if file extension is allowed."""
-    allowed = current_app.config.get('ALLOWED_EXTENSIONS', set())
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
+    allowed = current_app.config.get("ALLOWED_EXTENSIONS", set())
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
 
 
 def compress_ranges(indices: list[int]) -> list[tuple[int, int]]:
