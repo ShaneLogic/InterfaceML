@@ -1,0 +1,6 @@
+-r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+jupyterlab>=4,<5
+gunicorn>=23,<24
+pytest>=7
+ruff>=0.1

@@ -1,0 +1,45 @@
+name: interfaceml-research
+
+x-runtime: &runtime
+  platform: linux/arm64
+  image: interfaceml-research:local
+  build:
+    context: .
+    args:
+      USER_ID: ${INTERFACEML_UID:-1000}
+  init: true
+  restart: unless-stopped
+  volumes:
+    - ${INTERFACEML_WORKSPACE:-./.research}:/workspace
+  environment:
+    PYTHONPATH: /app
+    INTERFACEML_FULLERENE_PATH: /app/fullerene_e3gen
+    INTERFACEML_UPLOAD_FOLDER: /workspace/uploads
+    INTERFACEML_FULLERENE_CHECKPOINT: /workspace/models/egnn/best_model.pt
+    INTERFACEML_PAINN_FM_CHECKPOINT: /workspace/models/painn_fm/best_model.pt
+
+services:
+  interfaceml:
+    <<: *runtime
+    ports:
+      - "127.0.0.1:${INTERFACEML_PORT:-8001}:5000"
+
+  research:
+    <<: *runtime
+    profiles: [research]
+    ports:
+      - "127.0.0.1:${JUPYTER_PORT:-8888}:8888"
+    working_dir: /workspace
+    command:
+      - jupyter
+      - lab
+      - --ip=0.0.0.0
+      - --port=8888
+      - --no-browser
+      - --ServerApp.root_dir=/workspace
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8888/login').read()"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 5

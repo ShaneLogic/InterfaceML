@@ -65,6 +65,10 @@ dmypy.json
 *.rej
 nohup.out
 webserver.log
+.env
+.research/
+output/playwright/
+.playwright-cli/
 
 # Output files (keep examples but ignore test outputs)
 examples/output/*.vasp

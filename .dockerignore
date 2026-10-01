@@ -1,0 +1,77 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode
+.cursor
+.continue
+.claude
+.omc
+.playwright-cli
+.research
+.env
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info
+dist
+build
+.egg
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg
+venv
+env
+.venv
+
+# Test and coverage
+coverage
+htmlcov
+.coverage
+.coverage.*
+
+# Data and artifacts
+*.log
+.tmp
+tmp
+*.pth
+*.pt
+*.pickle
+*.pkl
+checkpoint*
+dataset
+output
+training_*.log
+
+# Docker
+.dockerignore
+Dockerfile
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Documentation build
+docs/_build
+site
+
+# Misc
+*.md
+!README.md
+!docs/DOCKER_RESEARCH.md
+!START_HERE.md
+!QUICK_START.md
+!docs/*.md
+!build_heterojunctions/README.md
+.env.local
+.env.*.local
