@@ -5,7 +5,7 @@ Core module loading helpers for the InterfaceML web app.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -14,18 +14,20 @@ class CoreStatus:
 
     available: bool
     splitting_available: bool
-    io: Optional[Any]
-    layering: Optional[Any]
-    splitting: Optional[Any]
-    error: Optional[str]
+    io: Any | None
+    layering: Any | None
+    splitting: Any | None
+    error: str | None
 
 
 def load_core_modules() -> CoreStatus:
     """Attempt to load core modules and return a status object."""
     try:
         from interfaceml.core import io, layering
+
         try:
             from interfaceml.core import splitting
+
             splitting_available = True
         except ImportError:
             splitting = None

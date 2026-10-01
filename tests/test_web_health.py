@@ -3,10 +3,10 @@ import pytest
 flask = pytest.importorskip("flask")
 pytest.importorskip("flask_cors")
 
-from interfaceml.web.app import create_app
-
 
 def test_health_endpoint():
+    from interfaceml.web.app import create_app
+
     app = create_app()
     with app.test_client() as client:
         resp = client.get("/api/health")

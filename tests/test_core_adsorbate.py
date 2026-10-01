@@ -13,12 +13,12 @@ import pytest
 from pymatgen.core import Lattice, Structure
 
 from interfaceml.core.adsorbate import (
+    SupercellChoice,
     auto_supercell_xy,
     build_adsorbate_interface,
     prepare_adsorbate_layer,
     rotation_matrix_from_axis_angle,
     stack_structures,
-    SupercellChoice,
 )
 
 # ---------------------------------------------------------------------------
@@ -41,8 +41,7 @@ _has_fullerene = _CIF_FULLERENE.exists()
 def cubic_slab():
     """Simple 10x10x5 slab with 4 atoms."""
     lattice = Lattice.from_parameters(10, 10, 5, 90, 90, 90)
-    return Structure(lattice, ["Si"] * 4,
-                     [[0, 0, 0], [0.5, 0, 0], [0, 0.5, 0], [0.5, 0.5, 0]])
+    return Structure(lattice, ["Si"] * 4, [[0, 0, 0], [0.5, 0, 0], [0, 0.5, 0], [0.5, 0.5, 0]])
 
 
 @pytest.fixture()
@@ -178,7 +177,8 @@ class TestBuildAdsorbateInterface:
         base = Structure.from_file(str(_CIF_PEROVSKITE))
         adsorbate = Structure.from_file(str(_CIF_FULLERENE))
         bottom, top, combined, choice = build_adsorbate_interface(
-            base, adsorbate,
+            base,
+            adsorbate,
             miller=(0, 0, 1),
             slab_thickness=10.0,
             vacuum=15.0,

@@ -7,6 +7,7 @@ validity checker) without needing a trained model.
 from __future__ import annotations
 
 import sys
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -18,15 +19,15 @@ _POC_DIR = Path(__file__).resolve().parents[1] / "fullerene_e3gen"
 if str(_POC_DIR) not in sys.path:
     sys.path.insert(0, str(_POC_DIR))
 
-from generate import (
-    rescale_to_unit_radius,
-    compute_bond_stats,
-    compute_radius_stats,
-    apply_bond_projection,
-    apply_nonbonded_repulsion,
-    is_valid_structure,
-    save_xyz,
-)
+# Load helpers only after the optional dependencies and module path are ready.
+_generate = import_module("generate")
+apply_bond_projection = _generate.apply_bond_projection
+apply_nonbonded_repulsion = _generate.apply_nonbonded_repulsion
+compute_bond_stats = _generate.compute_bond_stats
+compute_radius_stats = _generate.compute_radius_stats
+is_valid_structure = _generate.is_valid_structure
+rescale_to_unit_radius = _generate.rescale_to_unit_radius
+save_xyz = _generate.save_xyz
 
 
 class TestRescaleToUnitRadius:
@@ -55,11 +56,8 @@ class TestComputeBondStats:
 
     def test_regular_triangle(self):
         # Equilateral triangle with side = 1.0
-        pos = torch.tensor([[0.0, 0.0, 0.0],
-                            [1.0, 0.0, 0.0],
-                            [0.5, 0.866, 0.0]])
-        edge_index = torch.tensor([[0, 1, 1, 2, 0, 2],
-                                   [1, 0, 2, 1, 2, 0]])
+        pos = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 0.866, 0.0]])
+        edge_index = torch.tensor([[0, 1, 1, 2, 0, 2], [1, 0, 2, 1, 2, 0]])
         mean, std = compute_bond_stats(pos, edge_index)
         assert mean == pytest.approx(1.0, abs=0.01)
         assert std < 0.05
@@ -119,14 +117,16 @@ class TestIsValidStructure:
 
         # Build some plausible edges (nearest neighbors)
         dists = torch.cdist(pos, pos)
-        dists.fill_diagonal_(float('inf'))
+        dists.fill_diagonal_(float("inf"))
         _, idx = dists.topk(3, dim=1, largest=False)
         src = torch.arange(N).unsqueeze(1).expand_as(idx).reshape(-1)
         dst = idx.reshape(-1)
         edge_index = torch.stack([src, dst])
 
         ok, stats = is_valid_structure(
-            pos, edge_index, N,
+            pos,
+            edge_index,
+            N,
             bond_mean_tol=0.5,
             bond_std_max=0.5,
             radius_mean_tol=0.5,
@@ -134,8 +134,8 @@ class TestIsValidStructure:
         )
         assert isinstance(ok, bool)
         assert isinstance(stats, dict)
-        assert 'bond_mean' in stats
-        assert 'radius_mean' in stats
+        assert "bond_mean" in stats
+        assert "radius_mean" in stats
 
 
 class TestSaveXyz:
@@ -143,13 +143,12 @@ class TestSaveXyz:
 
     def test_writes_valid_xyz(self, tmp_path):
         pos = torch.tensor([[0.0, 0.0, 0.0], [1.42, 0.0, 0.0], [0.71, 1.23, 0.0]])
-        edge_index = torch.tensor([[0, 1, 1, 2, 0, 2],
-                                   [1, 0, 2, 1, 2, 0]])
+        edge_index = torch.tensor([[0, 1, 1, 2, 0, 2], [1, 0, 2, 1, 2, 0]])
         filepath = tmp_path / "test.xyz"
         save_xyz(pos, edge_index, filepath)
 
         content = filepath.read_text()
-        lines = content.strip().split('\n')
-        assert lines[0] == '3'  # num atoms
+        lines = content.strip().split("\n")
+        assert lines[0] == "3"  # num atoms
         assert len(lines) == 5  # header + comment + 3 atoms
-        assert lines[2].startswith('C ')  # carbon atoms
+        assert lines[2].startswith("C ")  # carbon atoms

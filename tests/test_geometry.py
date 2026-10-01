@@ -5,8 +5,8 @@ import pytest
 
 from interfaceml.utils.geometry import (
     angle_between,
-    normalize_vector,
     compute_distance,
+    normalize_vector,
 )
 
 
@@ -23,7 +23,9 @@ class TestAngleBetween:
         assert angle_between(np.array([1, 0, 0]), np.array([0, 1, 0])) == pytest.approx(90.0)
 
     def test_45_degrees(self):
-        assert angle_between(np.array([1, 0, 0]), np.array([1, 1, 0])) == pytest.approx(45.0, abs=1e-6)
+        assert angle_between(np.array([1, 0, 0]), np.array([1, 1, 0])) == pytest.approx(
+            45.0, abs=1e-6
+        )
 
     def test_zero_vector_returns_zero(self):
         assert angle_between(np.array([0, 0, 0]), np.array([1, 0, 0])) == 0.0

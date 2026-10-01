@@ -20,7 +20,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,13 @@ logger = logging.getLogger(__name__)
 class ModelEntry:
     """Describes a single loaded model backend."""
 
-    key: str                     # e.g. "egnn", "painn_fm"
-    label: str                   # Human-readable display name
-    api: Any                     # FullereneAPI instance (or None)
-    checkpoint_path: Optional[Path]
-    architecture: str            # "egnn" or "painn"
-    diffusion_type: str          # "ddpm" or "flow_matching"
-    error: Optional[str] = None
+    key: str  # e.g. "egnn", "painn_fm"
+    label: str  # Human-readable display name
+    api: Any  # FullereneAPI instance (or None)
+    checkpoint_path: Path | None
+    architecture: str  # "egnn" or "painn"
+    diffusion_type: str  # "ddpm" or "flow_matching"
+    error: str | None = None
     available: bool = False
 
 
@@ -44,18 +44,18 @@ class AiStatus:
     """Status container for AI module availability (multi-model)."""
 
     available: bool
-    api: Optional[Any]                          # Default model API (backward compat)
-    error: Optional[str]
-    base_path: Optional[Path]
-    checkpoint_path: Optional[Path]
-    local_refiner: Optional[Any] = None
-    local_error: Optional[str] = None
+    api: Any | None  # Default model API (backward compat)
+    error: str | None
+    base_path: Path | None
+    checkpoint_path: Path | None
+    local_refiner: Any | None = None
+    local_error: str | None = None
 
     # --- Multi-model registry ---
-    models: Dict[str, ModelEntry] = field(default_factory=dict)
+    models: dict[str, ModelEntry] = field(default_factory=dict)
     default_model: str = "egnn"
 
-    def get_api(self, model_key: Optional[str] = None) -> Optional[Any]:
+    def get_api(self, model_key: str | None = None) -> Any | None:
         """Return the FullereneAPI for *model_key*, falling back to default."""
         key = model_key or self.default_model
         entry = self.models.get(key)
@@ -64,7 +64,7 @@ class AiStatus:
         # Fallback to legacy .api
         return self.api
 
-    def get_model_entry(self, model_key: Optional[str] = None) -> Optional[ModelEntry]:
+    def get_model_entry(self, model_key: str | None = None) -> ModelEntry | None:
         key = model_key or self.default_model
         return self.models.get(key)
 
@@ -77,6 +77,7 @@ class AiStatus:
 # Path resolution helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_fullerene_path() -> Path:
     env_path = os.getenv("INTERFACEML_FULLERENE_PATH")
     if env_path:
@@ -84,7 +85,7 @@ def _resolve_fullerene_path() -> Path:
     return Path(__file__).parent.parent.parent / "fullerene_e3gen"
 
 
-def _resolve_checkpoint(base_path: Path, subdir: Optional[str] = None) -> Path:
+def _resolve_checkpoint(base_path: Path, subdir: str | None = None) -> Path:
     env_ckpt = os.getenv("INTERFACEML_FULLERENE_CHECKPOINT")
     if env_ckpt:
         return Path(env_ckpt)
@@ -100,7 +101,7 @@ def _resolve_painn_checkpoint(base_path: Path) -> Path:
     return base_path / "checkpoints" / "painn_fm" / "best_model.pt"
 
 
-def _resolve_local_refiner_checkpoint() -> Optional[Path]:
+def _resolve_local_refiner_checkpoint() -> Path | None:
     env_ckpt = os.getenv("INTERFACEML_LOCAL_GNN_CHECKPOINT")
     if env_ckpt:
         return Path(env_ckpt)
@@ -110,6 +111,7 @@ def _resolve_local_refiner_checkpoint() -> Optional[Path]:
 # ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------
+
 
 def _try_load_model(
     FullereneAPI: type,
@@ -122,7 +124,9 @@ def _try_load_model(
     """Try to instantiate a FullereneAPI from *checkpoint_path*."""
     if not checkpoint_path.exists():
         return ModelEntry(
-            key=key, label=label, api=None,
+            key=key,
+            label=label,
+            api=None,
             checkpoint_path=checkpoint_path,
             architecture=architecture,
             diffusion_type=diffusion_type,
@@ -132,7 +136,9 @@ def _try_load_model(
     try:
         api = FullereneAPI(str(checkpoint_path))
         return ModelEntry(
-            key=key, label=label, api=api,
+            key=key,
+            label=label,
+            api=api,
             checkpoint_path=checkpoint_path,
             architecture=architecture,
             diffusion_type=diffusion_type,
@@ -141,7 +147,9 @@ def _try_load_model(
         )
     except Exception as exc:
         return ModelEntry(
-            key=key, label=label, api=None,
+            key=key,
+            label=label,
+            api=None,
             checkpoint_path=checkpoint_path,
             architecture=architecture,
             diffusion_type=diffusion_type,
@@ -186,7 +194,8 @@ def load_fullerene_api() -> AiStatus:
     # ------------------------------------------------------------------
     egnn_ckpt = _resolve_checkpoint(base_path)
     egnn_entry = _try_load_model(
-        FullereneAPI, egnn_ckpt,
+        FullereneAPI,
+        egnn_ckpt,
         key="egnn",
         label="EGNN + DDPM",
         architecture="egnn",
@@ -202,7 +211,8 @@ def load_fullerene_api() -> AiStatus:
     # ------------------------------------------------------------------
     painn_ckpt = _resolve_painn_checkpoint(base_path)
     painn_entry = _try_load_model(
-        FullereneAPI, painn_ckpt,
+        FullereneAPI,
+        painn_ckpt,
         key="painn_fm",
         label="PaiNN + Flow Matching",
         architecture="painn",
@@ -216,7 +226,7 @@ def load_fullerene_api() -> AiStatus:
     # ------------------------------------------------------------------
     # Determine default / primary API
     # ------------------------------------------------------------------
-    models: Dict[str, ModelEntry] = {}
+    models: dict[str, ModelEntry] = {}
     if egnn_entry.available:
         models["egnn"] = egnn_entry
     if painn_entry.available:

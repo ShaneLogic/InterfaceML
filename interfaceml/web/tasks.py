@@ -29,11 +29,11 @@ import secrets
 import time
 import traceback
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ except Exception:
 # ---------------------------------------------------------------------------
 # Celery app (created lazily)
 # ---------------------------------------------------------------------------
-_celery_app: Optional[Any] = None
+_celery_app: Any | None = None
 
 
 def get_celery_app() -> Any:
@@ -93,16 +93,15 @@ celery_app = get_celery_app()
 # Core generation logic (shared between Celery & thread fallback)
 # ---------------------------------------------------------------------------
 def _run_interface_generation(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     ai_status: Any,
     core_status: Any,
     upload_folder: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run the full interface generation pipeline synchronously.
 
     Returns a JSON-serialisable result dict matching the API schema.
     """
-    from pathlib import Path
 
     from werkzeug.utils import secure_filename
 
@@ -127,8 +126,8 @@ def _run_interface_generation(
         return {"status": "error", "error": f"Failed to load base structure: {exc}"}
 
     local_refine = payload.get("local_refine", True)
-    model_key = payload.get("model") or getattr(ai_status, 'default_model', 'egnn')
-    selected_api = ai_status.get_api(model_key) if hasattr(ai_status, 'get_api') else ai_status.api
+    model_key = payload.get("model") or getattr(ai_status, "default_model", "egnn")
+    selected_api = ai_status.get_api(model_key) if hasattr(ai_status, "get_api") else ai_status.api
     generator = InterfaceAIGenerator(
         fullerene_api=selected_api,
         local_refiner=ai_status.local_refiner if local_refine else None,
@@ -169,19 +168,23 @@ def _run_interface_generation(
             logger.error("Failed to write sample %d: %s", idx, exc)
             continue
 
-        structures_out.append({
-            "sample_index": idx,
-            "output_file": str(output_path),
-            "download_url": f"/api/download/{output_filename}",
-            "n_atoms": len(result.combined),
-            "metadata": result.metadata,
-        })
+        structures_out.append(
+            {
+                "sample_index": idx,
+                "output_file": str(output_path),
+                "download_url": f"/api/download/{output_filename}",
+                "n_atoms": len(result.combined),
+                "metadata": result.metadata,
+            }
+        )
 
     if not structures_out:
         return {"status": "error", "error": "All samples failed to write"}
 
     first = structures_out[0]
-    model_entry = ai_status.get_model_entry(model_key) if hasattr(ai_status, 'get_model_entry') else None
+    model_entry = (
+        ai_status.get_model_entry(model_key) if hasattr(ai_status, "get_model_entry") else None
+    )
     return {
         "status": "success",
         "output_file": first["output_file"],
@@ -204,8 +207,8 @@ def _run_interface_generation(
 @dataclass
 class _TaskResult:
     status: str = "PENDING"  # PENDING | STARTED | SUCCESS | FAILURE
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
 
 
 class InProcessTaskBackend:
@@ -213,12 +216,12 @@ class InProcessTaskBackend:
 
     def __init__(self, max_workers: int = 2):
         self._pool = ThreadPoolExecutor(max_workers=max_workers)
-        self._tasks: Dict[str, _TaskResult] = {}
+        self._tasks: dict[str, _TaskResult] = {}
         self._lock = Lock()
 
     def submit_interface_generation(
         self,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         ai_status: Any,
         core_status: Any,
         upload_folder: str,
@@ -235,7 +238,7 @@ class InProcessTaskBackend:
                 with self._lock:
                     self._tasks[task_id].status = "SUCCESS"
                     self._tasks[task_id].result = result
-            except Exception as exc:
+            except Exception:
                 with self._lock:
                     self._tasks[task_id].status = "FAILURE"
                     self._tasks[task_id].error = traceback.format_exc()
@@ -243,12 +246,12 @@ class InProcessTaskBackend:
         self._pool.submit(_worker)
         return task_id
 
-    def get_result(self, task_id: str) -> Dict[str, Any]:
+    def get_result(self, task_id: str) -> dict[str, Any]:
         with self._lock:
             tr = self._tasks.get(task_id)
         if tr is None:
             return {"task_id": task_id, "state": "NOT_FOUND"}
-        out: Dict[str, Any] = {"task_id": task_id, "state": tr.status}
+        out: dict[str, Any] = {"task_id": task_id, "state": tr.status}
         if tr.status == "SUCCESS":
             out["result"] = tr.result
         elif tr.status == "FAILURE":
@@ -264,7 +267,7 @@ class CeleryTaskBackend:
 
     def submit_interface_generation(
         self,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         ai_status: Any,
         core_status: Any,
         upload_folder: str,
@@ -274,9 +277,9 @@ class CeleryTaskBackend:
         result = celery_generate_interface.delay(payload, upload_folder)
         return result.id
 
-    def get_result(self, task_id: str) -> Dict[str, Any]:
+    def get_result(self, task_id: str) -> dict[str, Any]:
         res = AsyncResult(task_id, app=get_celery_app())
-        out: Dict[str, Any] = {"task_id": task_id, "state": res.state}
+        out: dict[str, Any] = {"task_id": task_id, "state": res.state}
         if res.state == "SUCCESS":
             out["result"] = res.result
         elif res.state == "FAILURE":
@@ -290,7 +293,7 @@ class CeleryTaskBackend:
 if CELERY_AVAILABLE and celery_app is not None:
 
     @celery_app.task(bind=True, name="interfaceml.generate_interface")
-    def celery_generate_interface(self, payload: Dict[str, Any], upload_folder: str):
+    def celery_generate_interface(self, payload: dict[str, Any], upload_folder: str):
         """Celery task: re-initialise AI modules and run generation."""
         from interfaceml.web.ai import load_fullerene_api
         from interfaceml.web.core import load_core_modules
@@ -310,7 +313,7 @@ else:
 # ---------------------------------------------------------------------------
 # Factory: choose the best available backend
 # ---------------------------------------------------------------------------
-_backend_instance: Optional[Any] = None
+_backend_instance: Any | None = None
 
 
 def get_task_backend() -> Any:

@@ -7,8 +7,6 @@ that are used throughout the package.
 
 from __future__ import annotations
 
-from typing import Tuple
-
 import numpy as np
 
 
@@ -93,14 +91,14 @@ def estimate_molecule_diameter(coords: np.ndarray) -> float:
     -------
     diameter
         Maximum pairwise distance in Angstroms.
-        
+
     Notes
     -----
     For large molecules (>100 atoms), consider using scipy.spatial.distance.pdist
     for better performance. This implementation prioritizes simplicity.
     """
     coords = np.asarray(coords, dtype=float)
-    
+
     if len(coords) == 0:
         return 0.0
     if len(coords) == 1:
@@ -114,7 +112,7 @@ def estimate_molecule_diameter(coords: np.ndarray) -> float:
         # Use nanmax to be robust against NaN values from diffusion models
         result = float(np.nanmax(distances))
         return result if np.isfinite(result) else 0.0
-    
+
     # For small molecules, simple loop is fine and more memory-efficient
     max_dist = 0.0
     for i in range(len(coords)):

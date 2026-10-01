@@ -3,9 +3,8 @@
 import time
 
 from interfaceml.utils.performance import (
-    timer,
-    estimate_memory_usage,
     suggest_batch_size,
+    timer,
 )
 
 
@@ -15,12 +14,12 @@ class TestTimer:
     def test_returns_elapsed(self):
         with timer("test", verbose=False) as result:
             time.sleep(0.05)
-        assert result['elapsed'] >= 0.04
+        assert result["elapsed"] >= 0.04
 
     def test_zero_elapsed(self):
         with timer("test", verbose=False) as result:
             pass
-        assert result['elapsed'] >= 0.0
+        assert result["elapsed"] >= 0.0
 
 
 class TestSuggestBatchSize:
